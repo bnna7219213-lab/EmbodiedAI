@@ -1,0 +1,262 @@
+{
+  "artifact_root_dir": "C:\\Users\\bnna7\\workspace\\makeGameIP\\unity6GameWorkplace\\New Unity Project\\EmbodiedAI_Roadmap\\2026-09-19-9c900b07\\output\\tasks\\task_1789808514803_bvxs6u1y",
+  "artifacts": [
+    {
+      "artifact_id": "artifact_94df1a14c449dc0d0e4e8b0f",
+      "current_revision_id": "revision_aed56a1786f44d5ce43a27c3",
+      "filename": "项目全面分析与缺失环节报告.md",
+      "kind": "document",
+      "mime": "text/markdown",
+      "rel_path": "output/tasks/task_1789808514803_bvxs6u1y/项目全面分析与缺失环节报告.md",
+      "revisions": [
+        {
+          "artifact_revision_id": "revision_aed56a1786f44d5ce43a27c3",
+          "produced_at": "2026-09-19T17:15:51+08:00",
+          "sha256": "04b21be31bfbc2eabff1ad1e885b39b81b65350be9d0db17058e7a893d5d6510",
+          "size": 11794,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        }
+      ]
+    },
+    {
+      "artifact_id": "artifact_d1f7ebc9d925e0b9904bbfe0",
+      "current_revision_id": "revision_2879761a7a979b3bd1e65fa7",
+      "filename": "攀岩竞技动力学与触觉-视觉融合：数学基础.md",
+      "kind": "document",
+      "mime": "text/markdown",
+      "rel_path": "output/tasks/task_1789808514803_bvxs6u1y/攀岩竞技动力学与触觉-视觉融合：数学基础.md",
+      "revisions": [
+        {
+          "artifact_revision_id": "revision_8c6b6b15d4eff4089742282b",
+          "produced_at": "2026-09-19T17:20:56+08:00",
+          "sha256": "e8c9e80cca72d4525f5db71c8d66196f1f72762270e402b4d5413737d797f780",
+          "size": 33120,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_4c4b1f6572dd95c7b4b38e72",
+          "produced_at": "2026-09-19T17:45:45+08:00",
+          "sha256": "c276330aaeb19d86f98d618195d58d42f9c3f42931a842f4815138fb9fb8395b",
+          "size": 33925,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_64d0bb3ea904b0a591c3077a",
+          "produced_at": "2026-09-19T17:46:24+08:00",
+          "sha256": "fc3cc3f1454987319c16e0640c9b4d2073992c5bdf0afe117628740a8747ede3",
+          "size": 33988,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_280f161da00105100a014129",
+          "produced_at": "2026-09-19T17:47:10+08:00",
+          "sha256": "15dd8251aed16c536e006882f37407cad98df523f9284b404cb238eb584001f8",
+          "size": 34097,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_f5efc3ea218a7e192ca8039e",
+          "produced_at": "2026-09-19T17:47:42+08:00",
+          "sha256": "242ef1561b2bfdbeb93aaf60969195b7ddc6283d853f1024afddcbbe359bcde6",
+          "size": 34383,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_2879761a7a979b3bd1e65fa7",
+          "produced_at": "2026-09-19T17:48:16+08:00",
+          "sha256": "e40b97f776cac070d3cab22ea8b49f1ee8a7faf405ecd0eadd709959182a0b99",
+          "size": 34427,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        }
+      ]
+    },
+    {
+      "artifact_id": "artifact_5ab778720101c9d12da43b25",
+      "current_revision_id": "revision_b4e55ba40a57104a3252b8eb",
+      "filename": "climbing_dynamics_core.py",
+      "kind": "code",
+      "mime": "text/x-python",
+      "rel_path": "output/tasks/task_1789808514803_bvxs6u1y/climbing_dynamics_core.py",
+      "revisions": [
+        {
+          "artifact_revision_id": "revision_266dc796e42aaf5fb7675106",
+          "produced_at": "2026-09-19T17:24:56+08:00",
+          "sha256": "d3248badd63bfff71b5434f0cb35c21ba15f93a5563024a3975483f00ea14b54",
+          "size": 26944,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_d77a3976c82530565c5113ef",
+          "produced_at": "2026-09-19T17:26:04+08:00",
+          "sha256": "5aa6eb5883d286cafd6db9f5905b91a990ca2c6e450410cc6ec801fa78821533",
+          "size": 27533,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_9433cb51279261a758d59662",
+          "produced_at": "2026-09-19T17:26:36+08:00",
+          "sha256": "df8c03436ea965d75c43c5763c041d69f2e9cb16dd3f7174bd6f47f47f48b9f1",
+          "size": 28128,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_9b4e73e5bc4a01d6250e7777",
+          "produced_at": "2026-09-19T17:27:13+08:00",
+          "sha256": "09cde8f770f8993c137d8d2b406ebd7382d396361c4cd580854204cf2144d952",
+          "size": 29678,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_67f36214f33a270fec59cb68",
+          "produced_at": "2026-09-19T17:27:41+08:00",
+          "sha256": "3ec0f97616efc4f25185ccdfc412a69059eaa71453d0c4a11443b348f6bf6d70",
+          "size": 29407,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_1462d76cf81e616409599074",
+          "produced_at": "2026-09-19T17:29:27+08:00",
+          "sha256": "5ebd7a8e8c38f30b0079b05bfbfb7aed73d6c374a5ab061219d665a5a5bba16c",
+          "size": 29565,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_027616cd10e3173e77feb888",
+          "produced_at": "2026-09-19T17:30:04+08:00",
+          "sha256": "ed6d77fc92f6512351b07c814d5f43ac9053fe17daf022abb659749f4615ef7f",
+          "size": 30011,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_f939f00f29dd65ffd071a168",
+          "produced_at": "2026-09-19T17:31:24+08:00",
+          "sha256": "0ddfeea49ca6114718ca364bc768d261679ffab926dbb446e86577f3aac64d5b",
+          "size": 30552,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_f2947a5b7d1cf62ab126f970",
+          "produced_at": "2026-09-19T17:32:08+08:00",
+          "sha256": "2eb70321ae326e2d2521edd597b2f67bbd41ca2c282374428418e5c6b8dbeb4c",
+          "size": 30968,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_c18bf60155cc0f774c8763fb",
+          "produced_at": "2026-09-19T17:32:47+08:00",
+          "sha256": "55e622843ca8ecb1c908239383a43376d1bd6ed3eb84f2eeb9aa31150a2d57df",
+          "size": 31119,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_640714a2ce633f2bb9fb79f5",
+          "produced_at": "2026-09-19T17:35:08+08:00",
+          "sha256": "046f72e858220babbed549d951f6bd36945688952c6b14fe276e3d7fe5ee52d2",
+          "size": 31193,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_1d8b48ee97c23953dcd6eca1",
+          "produced_at": "2026-09-19T17:35:28+08:00",
+          "sha256": "4ebd6b6141e6b310d4088f9a9e810f86224ea86457aa2a72af7604d8836825a4",
+          "size": 31618,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_c1a7075e5d28f9520713c0f1",
+          "produced_at": "2026-09-19T17:35:54+08:00",
+          "sha256": "6ff220f273f742f2475755dfaa58f720910d83e2f12fe0788cb9f0a5701cf53f",
+          "size": 32015,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_44178dd828c063bbe815c7b0",
+          "produced_at": "2026-09-19T17:36:25+08:00",
+          "sha256": "9ecfd03eaddf66b5fc0d0e33534bcc2de58d0b6d4661b34b1571bda7d5c74ea2",
+          "size": 31984,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_cb7af06299b21cc1f8e8fb03",
+          "produced_at": "2026-09-19T17:38:13+08:00",
+          "sha256": "d0fb1568a08e0e0394b18d00759457ae3cabaf8a5d4c332d94c453da4ef63db5",
+          "size": 30938,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_7f570f182c6718616348f44b",
+          "produced_at": "2026-09-19T17:38:40+08:00",
+          "sha256": "8300505c4e949f85f3a006434326505ae4ddbd6d324f5c48813ba01d5d23e63c",
+          "size": 31322,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_c738b614f535f4f3b55c0fd8",
+          "produced_at": "2026-09-19T17:40:20+08:00",
+          "sha256": "254e3a33c26c39e847b07e34efef9909973632264160296a446963e880b8f812",
+          "size": 33562,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_f2c1645d3f019fc14959c631",
+          "produced_at": "2026-09-19T17:41:14+08:00",
+          "sha256": "3a32bfd05fb3f089054147364137994404d7923b30c1f2cd3b0c0fe49104fafd",
+          "size": 31170,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_49534e54c6503dabe38e0e7e",
+          "produced_at": "2026-09-19T17:41:44+08:00",
+          "sha256": "401af48c7659ebb16fc9cba2e754789a6725bef7400488ae5e59618261c42520",
+          "size": 31306,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_4e087dab0fe5d6461cc7c0e0",
+          "produced_at": "2026-09-19T17:43:02+08:00",
+          "sha256": "1bfc99f1ea58112781b7f1a030c3af1f268acce12c2ce015bacbfa651a40f5a3",
+          "size": 31576,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_d2afcac81ada3cf2793a6b20",
+          "produced_at": "2026-09-19T17:43:53+08:00",
+          "sha256": "c52d990123842ecf18e78a4b1981c207f48de7981ddf693e2d2afe0ad81ad354",
+          "size": 31642,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        },
+        {
+          "artifact_revision_id": "revision_b4e55ba40a57104a3252b8eb",
+          "produced_at": "2026-09-19T17:44:17+08:00",
+          "sha256": "dbdf2a51d9830f468dee720d34cdd39e134fb867795578f052f0a0839e22b85e",
+          "size": 31536,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        }
+      ]
+    },
+    {
+      "artifact_id": "artifact_3a5ce21ee24391c5266d30ee",
+      "current_revision_id": "revision_9d54e75d923c876761f5bae0",
+      "filename": "触觉-视觉融合应用于攀岩竞技：分析结论与补充.md",
+      "kind": "document",
+      "mime": "text/markdown",
+      "rel_path": "output/tasks/task_1789808514803_bvxs6u1y/触觉-视觉融合应用于攀岩竞技：分析结论与补充.md",
+      "revisions": [
+        {
+          "artifact_revision_id": "revision_9d54e75d923c876761f5bae0",
+          "produced_at": "2026-09-19T17:50:04+08:00",
+          "sha256": "a4bd00f1e73ad0d26f907485d6557f1fddd5875e0defcc773065ed2295c5fe2e",
+          "size": 5203,
+          "turn_id": "local_1789808514803_tgskwpi2"
+        }
+      ]
+    }
+  ],
+  "created_at": "2026-09-19T09:01:56.989539+00:00",
+  "current_turn_id": "local_1789808514803_tgskwpi2",
+  "execution_status": "completed",
+  "schema_version": 2,
+  "session_id": "9c900b07-4b79-412f-a577-22361e8e517c",
+  "task_id": "task_1789808514803_bvxs6u1y",
+  "updated_at": "2026-09-19T09:52:06.542063+00:00"
+}
