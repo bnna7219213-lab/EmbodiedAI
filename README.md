@@ -16,6 +16,7 @@
 4. **安全优先** — 电机驱动必须有硬件级自动关机保护，不能仅靠软件
 5. **决策核心** — 强化学习的数学本质指导具身智能体训练，触觉为最稀缺感知
 6. **操作系统驱动** — 嵌入式 Linux on ARM 把 AI 决策变成电机旋转
+7. **契约先行** — 跨项目交互一律经 `contracts/` 机器可读契约，禁止文档口头约定
 
 ---
 
@@ -28,7 +29,17 @@
 | [docs/plan.md](docs/plan.md) | **主计划**: 13 章端到端研发计划 (v0.2) |
 | [docs/architecture-overview.md](docs/architecture-overview.md) | ★ **新增** ★ 系统架构总览: 7层架构、感知系统、核心方程、实时性预算 |
 | [docs/future-exploration-plan.md](docs/future-exploration-plan.md) | ★ **新增** ★ 下一步未来探索计划: 6-18个月分阶段路线图 |
+| [docs/09-project-skeleton/skeleton-and-layering-plan.md](docs/09-project-skeleton/skeleton-and-layering-plan.md) | ★ **新增** ★ 项目骨架方案 + 三栈分离命名法 (控制L/物理P/数据D/安全S横切) |
 | [CHANGELOG.md](CHANGELOG.md) | ★ **新增** ★ 版本变更日志与关键决策记录 |
+
+### 契约目录 (`contracts/`) — 跨项目交互唯一真源
+
+| 契约 | 内容 | 消费方 |
+|---|---|---|
+| [hw_requirements.yaml](contracts/hw_requirements.yaml) | AI 策略 → 硬件规格 (三栈约束全集) | SynapticForge ForgeCore / EdaLab |
+| [canfd/joint_control.dbc](contracts/canfd/joint_control.dbc) | CAN-FD 帧格式/ID 分配/DBC (9 消息: 6 关节 + 同步 + 遥测 + 安全事件) | ECAD-MCAD (债务已还) / HIL |
+| [dr_params/manufacturing_variance.yaml](contracts/dr_params/manufacturing_variance.yaml) | 制造差异驱动的域随机化分布 | RL 训练管线 (创新 #1) |
+| [safety_budget.yaml](contracts/safety_budget.yaml) | 安全链分段延迟预算 (0.8µs+8ms+8ms=16ms<20ms) | 横切安全层 S / G10 认证 |
 
 ### 01 — AI 模型 (`docs/01-ai-model/`)
 
@@ -143,13 +154,17 @@ L1 物理执行层:  电机 + 减速器 + 传感器
 
 ## PCB 依赖全景
 
-| 层级 | PCB 承载 | 关键芯片/模块 | 层数 |
+> **命名规范（三栈分离命名法，见 [docs/09-project-skeleton/skeleton-and-layering-plan.md](docs/09-project-skeleton/skeleton-and-layering-plan.md)）**：控制栈用 L1-L7（见上方系统架构）；物理栈（PCB/硬件）用 **P1-P5**；数据栈用 **D1-D5**。安全层 S 与数据栈 D 为横切层。编号不再混用。
+
+| 物理栈 | PCB | 关键芯片/模块 | 层数 |
 |---|---|---|---|
-| L1 电源层 | 电源管理 PCB | PMIC、BMS、电机驱动电源轨 | 4 层 |
-| L2 感知层 | 传感器融合 PCB | IMU、摄像头接口、力传感器 ADC | 6 层 |
-| L3 决策层 | 主控 PCB | Jetson Orin / RK3588 + LPDDR5 | 8 层 |
-| L4 执行层 | 电机驱动 PCB | STM32 + DRV8301 + 自动关机电路 | 4 层 |
-| L5 互联层 | 通信背板 | CAN-FD / RS485 / Ethernet | 2 层 |
+| P1 电源层 | 电源管理 PCB | PMIC、BMS、电机驱动电源轨 | 4 层 |
+| P2 感知层 | 传感器融合 PCB | IMU、摄像头接口、力传感器 ADC | 6 层 |
+| P3 决策层 | 主控 PCB | Jetson Orin / RK3588 + LPDDR5 | 8 层 |
+| P4 执行层 | 电机驱动 PCB | STM32 + DRV8301 + 自动关机电路 | 4 层 |
+| P5 互联层 | 通信背板 | CAN-FD / RS485 / Ethernet | 2 层 |
+
+物理栈与控制栈的对应关系：P3（决策 PCB）承载 L6-L7；P2（感知 PCB）服务 L3-L5 的传感输入；P4（电机驱动 PCB）实现 L2；P1/P5 为 L1 物理执行提供能量与互联。**横切安全层 S**（<1μs 硬件关断、STO、机会约束滤波）横跨 L1-L7 与 P1-P5；**横切数据栈 D**（遥测→DR→RL 飞轮）横跨全栈。
 
 ---
 

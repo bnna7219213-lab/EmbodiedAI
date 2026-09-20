@@ -1,0 +1,106 @@
+# EmbodiedAI 硬件需求规格 (hw_requirements.yaml)
+# ============================================================
+# 契约角色: AI策略/架构约束 → 机器可读硬件规格 (唯一真源)
+# 消费方: SynapticForge ForgeCore (EPS 生成) / EdaLab forge-core 子命令
+# 生产方: EmbodiedAI 各层文档产出的硬约束
+# 命名法: 三栈分离 (控制L / 物理P / 数据D / 安全S横切)
+# 版本: v1.0 | 日期: 2026-09-20 | 见 docs/10-contract-register.md (待建)
+# ============================================================
+
+metadata:
+  strategy_version: "household_grasp_v1.0"
+  architecture_revision: "7layer-v1.0-3stack"
+  timestamp: "2026-09-20"
+
+# ---- 控制栈 L4-L7 的算力与实时性需求 (承载于 P3 决策 PCB) ----
+compute:
+  target_board: jetson_orin_nx_16gb
+  control_frequencies_hz:
+    task_planning: 1          # L6 任务规划
+    contact_planning: 10      # L5 接触序列 (MCTS)
+    motion_control: 20        # L4 运动控制 (RL Actor)
+    reflex_servo: 1000        # L3 反射伺服 (阻抗)
+  end_to_end_inference_budget_ms: 50   # 约束6: VLA 端到端 < 50ms
+  model_inference_ms: 15               # nn-to-hardware-pipeline 实测预算
+  preprocessing:
+    tactile_gelsight_kbps: 921 * 20 * 8 / 1000   # 约束4: 921KB/帧@20Hz → GPU 预处理
+    gpu_preprocess_required: true
+
+# ---- 控制栈 L2 电机驱动需求 (承载于 P4 电机驱动 PCB) ----
+motor_drive:
+  bus_voltage_v: 48
+  peak_current_a: 30
+  control_mode: FOC_SENSORED
+  pwm_carrier_hz: 20000
+  current_loop_hz: 10000       # 100μs 周期
+  protection:
+    hardware_overcurrent_us: 1        # 约束1: <1μs 硬件级, 不可软件实现
+    overtemp_shutdown_c: 105
+    watchdog_comm_loss_ms: 50
+    independent_comparator_latch: true # 比较器+锁存, 独立于 MCU
+  firmware_features:
+    - clarke_park_transform
+    - svpwm
+    - encoder_absolute_19bit
+    - canfd_comm
+
+# ---- 控制栈 L3/L5 感知需求 (承载于 P2 感知 PCB) ----
+sensors:
+  tactile:
+    type: gelsight_mini
+    frame_rate_hz: 100
+    hertz_load_limit_n: 60        # 约束7: 软指尖极限 → 需骨架并联方案
+    sensing_res_hz: 100            # 滑脱前兆检测带宽需求
+  vision:
+    type: rgb_d_stereo
+    frame_rate_hz: 20
+  force_torque:
+    type: six_axis_wrist
+    bandwidth_hz: 1000
+  imu:
+    type: mems_9axis
+    rate_hz: 400
+  encoding:
+    encoder_type: absolute_19bit
+    dual_encoder: true             # 电机端 + 负载端
+
+# ---- 控制栈 L1 物理执行 + 物理栈 P1 能量需求 ----
+power:
+  battery:
+    chemistry: li_ion_21700
+    nominal_voltage_v: 48           # 13S
+    capacity_wh: 320
+    bms_protection: [ovp, uvp, ocp, otp, balancing]
+  endurance_target_hours: 4         # 家用场景
+  power_rails:
+    - {rail: 48V, load: motor_peak, current_a: 30}
+    - {rail: 12V, load: jetson_peripherals, current_a: 3}
+    - {rail: 5V, load: sensors, current_a: 2}
+    - {rail: 3.3V, load: mcu_logic, current_a: 1}
+
+# ---- 物理栈 P5 互联需求 ----
+communication:
+  bus: can_fd
+  arbitration_bps: 1000000
+  data_bps: 5000000
+  control_period_ms: 5             # 200Hz 目标下发
+  sync_frame_hz: 200
+  time_sync: gptp_8021as           # 约束: 多传感器时间同步 <1μs
+  contracts: canfd/joint_control.dbc
+
+# ---- 横切安全层 S (安全链分段预算, 详见 safety_budget.yaml) ----
+safety:
+  stop_category: CAT_0_IMMEDIATE
+  total_break_budget_ms: 20        # 电气0.8μs + 熄弧8ms + 机械隔离8ms ≈ 16ms
+  stop_angle_limit_deg: 30         # 人机共存缠绕防护
+  standards: [ISO_13482, ISO_13849_PL_d, IEC_61508_SIL2]
+  chance_constrained_grip:         # 机会约束握力 (μ 不确定性)
+    confidence_z: 2.0
+    slip_rate_target_percent: 5    # 约束8: 无裕度点估计滑脱率50% → 目标<5%
+
+# ---- 横切数据栈 D (飞轮接口) ----
+data_flywheel:
+  dr_params_source: dr_params/manufacturing_variance.yaml
+  version_triple: [policy_ver, hw_rev, batch_sn]
+  telemetry_schema: d2_hil_telemetry
+  rl_replay_format: d4_replay_v1

@@ -1,0 +1,79 @@
+# 制造差异驱动的域随机化参数 (Manufacturing-Variance-Informed DR)
+# ============================================================
+# 契约角色: D3 制造/批次数据 → D4 RL 域随机化分布 (fusion-absorption-plan 创新 #1)
+# 核心理念: 用 ICT/FCT 实测器件容差替代 uniform 拍脑袋的 DR 范围
+# 生产方: EdaLab ManufacturingDataFlywheel (data-flywheel 引擎) + 产线 ICT/FCT
+# 消费方: EmbodiedAI RL 训练管线 (BC/PPO/SAC 的 domain randomization 配置)
+# 版本: v1.0 | 日期: 2026-09-20
+# ============================================================
+
+metadata:
+  source: "ict_fct_measured | datasheet_synthetic"   # 真机数据到位前用 datasheet 合成
+  batch_scope: "SF-MDB-0001 派系 (48V/30A 驱动板)"
+  policy_version_binding: "household_grasp_v1.0"
+
+# ---- 电气域容差 (对应 MultiPhysicsCoupler 电气参数) ----
+electrical:
+  mosfet_rds_on:
+    nominal_ohm: 0.003
+    distribution: normal
+    sigma_percent: 15            # datasheet 批次离散
+    temp_coeff_percent_per_c: 0.4   # 正反馈项 (约束传播闭环)
+  phase_resistance:
+    nominal_ohm: 0.05
+    distribution: normal
+    sigma_percent: 8
+    temp_coeff_percent_per_c: 0.393
+  battery_internal_r:
+    nominal_ohm: 0.12
+    distribution: normal
+    sigma_percent: 10
+    low_temp_model: "below_10C: nonlinear rise 1%/C"
+  current_sense_gain:
+    nominal: 1.0
+    distribution: normal
+    sigma_percent: 1            # INA240 类
+
+# ---- 机械域容差 (对应 KinematicsDynamics / EMCoupling 引擎) ----
+mechanical:
+  joint_stiffness:
+    nominal_nm_per_rad: 5000
+    distribution: lognormal     # 减速器刚度批次差异右偏
+    sigma_percent: 20
+    note: "带宽上限 fc=sqrt(K/J)/2pi 随之离散 → 阻抗增益裕量必须覆盖 -20% 刚度"
+  link_mass:
+    sigma_percent: 5
+  link_length_mm:
+    sigma_percent: 0.5          # 机加工公差
+  gear_ratio:
+    nominal: 10
+    sigma_percent: 0.1
+  gear_backlash_rad:
+    nominal: 0.002
+    distribution: normal
+    sigma_percent: 30           # 背隙批次差异大 → 编码器双重化必要
+
+# ---- 传感域容差 (对应 SignalFlow / 触觉感知) ----
+sensing:
+  force_sensor_calibration:
+    sigma_percent: 3            # 力标定矩阵离散
+  tactile_sensitivity:
+    sigma_percent: 10           # GelSight 单元间差异
+  friction_coefficient:
+    distribution: normal
+    mu_hat: 0.8
+    sigma_mu: 0.15              # 机会约束输入: f_n >= |f_t|/(mu_hat - z*sigma_mu)
+    note: "z=2.0 → 5% 滑脱率目标 (见 hw_requirements.safety)"
+
+# ---- 环境域 (对齐 EdaLab data-flywheel 的 DR 输出格式) ----
+environment:
+  ambient_temp_c: {min: 15, max: 45}
+  canfd_latency_ms: {min: 0.0, max: 2.0}
+  load_torque_scale: {min: 1.0, max: 1.0}
+
+# ---- 回写通道 (飞轮闭环: 训练需求 → 收紧产线测试) ----
+feedback_rules:
+  - trigger: "策略在 -1σ 刚度样本上滑脱率 > 8%"
+    action: "收紧 joint_stiffness ICT 验收下限至 nominal*0.85"
+  - trigger: "安全链延迟样本超 20ms 预算"
+    action: "SAFETY_MCU 固件版本回退 + 批次隔离 (D5 三元组归因)"

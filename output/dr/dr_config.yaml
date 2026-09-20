@@ -1,0 +1,40 @@
+config_version: v2.0_e2e
+based_on_serials:
+  - SF001
+  - SF001
+overrides:
+  encoder_noise_std:
+    distribution: normal
+    min: 0.01
+    max: 0.01
+    mean: 0.01
+    std: 0.0
+    rationale: 基于 1 个编码器 ICT 实测偏差
+  current_sensor_noise_std:
+    distribution: uniform
+    min: 0
+    max: 0.0001
+    rationale: 基于 1 个电流传感器 ICT 实测偏差
+  canfd_latency_ms:
+    distribution: uniform
+    min: 0
+    max: 0.8
+    rationale: 基于 1 块板子 FCT CAN-FD 利用率
+  load_torque_scale:
+    distribution: loguniform
+    min: 1.0
+    max: 1.0
+    rationale: 基于 1 条遥测电流
+  friction_coefficient:
+    distribution: uniform
+    min: 0
+    max: 0.0
+    rationale: 摩擦 (从部署电流变化推断)
+  ambient_temp:
+    distribution: uniform
+    min: 15
+    max: 35
+    rationale: 部署最高环境温度: 35.0°C
+recommended_training_epochs: 200
+recommended_lr_multiplier: 1.0
+generated_at: 1789910623.089175

@@ -1,0 +1,108 @@
+VERSION ""
+
+NS_ :
+    NS_DESC_
+    CM_
+    BA_DEF_
+    BA_
+    VAL_
+    CAT_DEF_
+    CAT_
+    FILTER
+    BA_DEF_DEF_
+    EV_DATA_
+    ENVVAR_DATA_
+    SGTYPE_
+    SGTYPE_VAL_
+    BA_DEF_SGTYPE_
+    BA_SGTYPE_
+    SIG_TYPE_REF_
+    VAL_TABLE_
+    SIG_GROUP_
+    SIG_VALTYPE_
+    SIGTYPE_VALTYPE_
+    BO_TX_BU_
+    BA_DEF_REL_
+    BA_REL_
+    BA_DEF_DEF_REL_
+    BU_SG_REL_
+    BU_EV_REL_
+    BU_BO_REL_
+    SG_MUL_VAL_
+
+BS_:
+
+BU_: JETSON_MASTER, SHOULDER_L, SHOULDER_R, ELBOW_L, ELBOW_R, WRIST_L, WRIST_R, SAFETY_MCU
+
+BO_ 100 JointCmd_SHOULDER_L: 8 JETSON_MASTER
+ SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" SHOULDER_L
+ SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" SHOULDER_L
+ SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" SHOULDER_L
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
+
+BO_ 104 JointCmd_SHOULDER_R: 8 JETSON_MASTER
+ SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" SHOULDER_R
+ SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" SHOULDER_R
+ SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" SHOULDER_R
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
+
+BO_ 108 JointCmd_ELBOW_L: 8 JETSON_MASTER
+ SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" ELBOW_L
+ SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" ELBOW_L
+ SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" ELBOW_L
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
+
+BO_ 112 JointCmd_ELBOW_R: 8 JETSON_MASTER
+ SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" ELBOW_R
+ SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" ELBOW_R
+ SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" ELBOW_R
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
+
+BO_ 116 JointCmd_WRIST_L: 8 JETSON_MASTER
+ SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" WRIST_L
+ SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" WRIST_L
+ SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" WRIST_L
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
+
+BO_ 120 JointCmd_WRIST_R: 8 JETSON_MASTER
+ SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" WRIST_R
+ SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" WRIST_R
+ SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" WRIST_R
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
+
+BO_ 0 SyncFrame: 8 JETSON_MASTER
+ SG_ sync_marker : 0|8@0+ (1,0) [0|255] ""  SHOULDER_L,SHOULDER_R,ELBOW_L,ELBOW_R,WRIST_L,WRIST_R
+ SG_ time_low : 16|16@0+ (0.001,0) [0|65.535] "s" SHOULDER_L,SHOULDER_R,ELBOW_L,ELBOW_R,WRIST_L,WRIST_R
+ SG_ time_high : 32|16@0+ (0.001,0) [0|65.535] "s" SHOULDER_L,SHOULDER_R,ELBOW_L,ELBOW_R,WRIST_L,WRIST_R
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
+
+BO_ 300 JointTelemetry_SHOULDER_L: 8 SHOULDER_L
+ SG_ actual_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" JETSON_MASTER,SAFETY_MCU
+ SG_ actual_current_a : 16|11@0+ (0.01,0) [0|20.47] "A" JETSON_MASTER,SAFETY_MCU
+ SG_ temp_c : 27|9@0+ (0.5,-20) [-20|235.5] "C" JETSON_MASTER,SAFETY_MCU
+ SG_ status_flags : 40|8@0+ (1,0) [0|255] "" JETSON_MASTER,SAFETY_MCU
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" SHOULDER_L
+
+BO_ 900 SafetyEvent: 8 SAFETY_MCU
+ SG_ fault_type : 0|8@0+ (1,0) [0|255] "" JETSON_MASTER
+ SG_ fault_value : 8|16@0+ (0.1,0) [0|6553.5] "" JETSON_MASTER
+ SG_ sto_triggered : 24|1@0+ (1,0) [0|1] "" JETSON_MASTER
+ SG_ timestamp_us : 32|24@0+ (1,0) [0|16777215] "us" JETSON_MASTER
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" SAFETY_MCU
+
+CM_ BU_ JETSON_MASTER "主控 (P3 决策 PCB, Jetson Orin NX)";
+CM_ BU_ SAFETY_MCU "独立看门狗 MCU (STM32G4, 横切安全层 S 的确定性执行器)";
+CM_ BO_ 0 "同步帧: 200Hz, 所有关节同一时刻更新目标, 消除通信相位差";
+CM_ BO_ 900 "安全事件: 横切安全层 S 的唯一上报通道, 触发即联动 STO";
+
+BA_DEF_ "GenMsgCycleTime" INT 0 10000;
+BA_DEF_DEF_ "GenMsgCycleTime" 0;
+BA_ "GenMsgCycleTime" BO_ 0 5;
+BA_ "GenMsgCycleTime" BO_ 100 5;
+BA_ "GenMsgCycleTime" BO_ 104 5;
+BA_ "GenMsgCycleTime" BO_ 108 5;
+BA_ "GenMsgCycleTime" BO_ 112 5;
+BA_ "GenMsgCycleTime" BO_ 116 5;
+BA_ "GenMsgCycleTime" BO_ 120 5;
+BA_ "GenMsgCycleTime" BO_ 300 10;
+BA_ "GenMsgCycleTime" BO_ 900 0;

@@ -1,0 +1,171 @@
+"""Signal Temporal Logic (STL) 规范 — 运行时监控 + 离线验证。
+
+创新 #4 核心: 将安全需求用 STL 形式化描述, 生成运行时监控器。
+STL 公式翻译:
+  "始终[0,T] 力不超过阈值"        → G[0,T](force < F_max)
+  "停止命令后10ms内到达零力矩"    → G(stop_cmd → F[0,10ms] torque==0)
+  "接近人类时速度 < 0.25m/s"      → G(human_dist < 0.5m → velocity < 0.25)
+
+运行时监控: 对于信号 f(t), 在任意时间 t 计算公式的满足度 (robustness):
+  ρ(G[a,b] φ, t) = min_{t'∈[t+a,t+b]} ρ(φ, t')
+  ρ(F[a,b] φ, t) = max_{t'∈[t+a,t+b]} ρ(φ, t')
+  ρ(φ → ψ, t)    = max(-ρ(φ,t), ρ(ψ,t))
+  ρ(X[a] φ, t)   = ρ(φ, t+a)
+
+ρ > 0 → 公式在时间 t 成立; ρ ≤ 0 → 违反。
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import dataclass, field
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import numpy as np
+
+
+# ---- STL 公式类型 ----
+
+@dataclass
+class STLAtom:
+    """原子命题: f(x) < 0 形式, 其中 f 是从状态空间到 R 的函数。"""
+    name: str
+    func: Callable[[np.ndarray], float]  # 公式 f(x), 当 f(x) < 0 时原子成立
+
+    def robustness(self, x: np.ndarray) -> float:
+        return -self.func(x)  # f(x) < 0 → ρ = -f(x); ρ > 0 成立
+
+
+@dataclass
+class STLOr:
+    args: list
+    def robustness(self, signal, t=0, dt=0.01) -> float:
+        return max(_eval(self.args[0], signal, t, dt),
+                   _eval(self.args[1], signal, t, dt))
+
+
+@dataclass
+class STLAnd:
+    args: list
+    def robustness(self, signal, t=0, dt=0.01) -> float:
+        return min(_eval(self.args[0], signal, t, dt),
+                   _eval(self.args[1], signal, t, dt))
+
+
+@dataclass
+class STLNot:
+    arg: Any
+    def robustness(self, signal, t=0, dt=0.01) -> float:
+        return -_eval(self.arg, signal, t, dt)
+
+
+@dataclass
+class STLGlobally:
+    """G[a,b] φ — 全局必然"""
+    arg: Any
+    a: float
+    b: float
+    def robustness(self, signal, t=0, dt=0.01) -> float:
+        t_end = _last_t(signal, t, self.b, dt)
+        vals = [_eval(self.arg, signal, t + s, dt)
+                for s in _arange_steps(self.a, self.b, dt)
+                if t + s <= t_end]
+        return min(vals) if vals else 0.0
+
+
+@dataclass
+class STLFinally:
+    """F[a,b] φ — 最终必然"""
+    arg: Any
+    a: float
+    b: float
+    def robustness(self, signal, t=0, dt=0.01) -> float:
+        vals = [_eval(self.arg, signal, t + s, dt)
+                for s in _arange_steps(self.a, self.b, dt)
+                if t + s <= _last_t(signal, t, self.b, dt)]
+        return max(vals) if vals else 0.0
+
+
+@dataclass
+class STLImplies:
+    """φ → ψ"""
+    left: Any
+    right: Any
+    def robustness(self, signal, t=0, dt=0.01) -> float:
+        l = _eval(self.left, signal, t, dt)
+        r = _eval(self.right, signal, t, dt)
+        return max(-l, r)
+
+
+def _eval(formula, signal, t, dt) -> float:
+    """对公式 + 信号 + 时间点求 robustness。"""
+    if isinstance(formula, STLAtom):
+        x = _interp(signal, t, dt)
+        return formula.robustness(x)
+    elif isinstance(formula, (STLOr, STLAnd, STLGlobally, STLFinally, STLImplies, STLNot)):
+        return formula.robustness(signal, t, dt)
+    else:
+        raise TypeError(f"未知 STL 公式类型: {type(formula)}")
+
+
+def _interp(signal: dict | np.ndarray, t: float, dt: float) -> np.ndarray:
+    """从采样信号中插值取 t 时刻状态。
+
+    支持两种信号格式:
+      - np.ndarray: 直接作为状态 (单时刻公式评估)
+      - dict: {"time": [...], "force": [...], "state": [...]}
+    """
+    if isinstance(signal, np.ndarray):
+        return signal
+    if "state" in signal and np.ndim(signal["state"]) >= 1:
+        return np.asarray(signal["state"], dtype=float)
+    ts = signal.get("time", [])
+    idx = int(round(t / dt)) if dt > 0 else 0
+    idx = max(0, min(idx, max(len(ts) - 1, 0)))
+    return np.array(signal.get("force", [0.0] if not ts else [signal.get("force", [0.0])[idx]]))
+
+
+def _last_t(signal, t, duration, dt):
+    ts = signal.get("time", [0.0])
+    if ts is not None and len(ts) > 0:
+        return min(t + duration, float(ts[-1]))
+    return t + duration
+
+
+def _arange_steps(a: float, b: float, dt: float):
+    n = max(1, int((b - a) / dt) + 1)
+    return [a + i * dt for i in range(n)]
+
+
+# ---- 常用安全监控公式库 ----
+
+def force_limit_monitor(max_force: float) -> STLGlobally:
+    """始终[0,T] 力不超过 max_force。"""
+    return STLGlobally(
+        STLAtom("force_limit", lambda x: float(np.max(np.abs(x))) - max_force),
+        a=0, b=0.1,  # 100ms 滑动窗口
+    )
+
+
+def velocity_when_human_near(human_dist_thr=0.5, vel_thr=0.25) -> STLGlobally:
+    """接近人类 → 限速 (ISO 13482 速度约束)。"""
+    # 人对距离 < human_dist_thr → 速度必须 < vel_thr
+    dist = STLAtom("human_dist", lambda x: float(x[0]) - human_dist_thr if len(x) > 0 else -1.0)
+    vel = STLAtom("velocity", lambda x: float(abs(x[1])) - vel_thr if len(x) > 1 else 0.0)
+    return STLGlobally(STLImplies(dist, vel), a=0, b=0.1)
+
+
+def eventually_stop(torque_key: str = "torque", t_timeout: float = 0.01) -> STLFinally:
+    """停止信号后 t_timeout 内力矩必须归零 (STO 验证)。"""
+    return STLFinally(
+        STLAtom(f"{torque_key}_zero", lambda x: float(abs(x[0]))),
+        a=0, b=t_timeout,
+    )
+
+
+def force_ramp_monitor(max_rate: float = 1000.0, dt: float = 0.001) -> STLGlobally:
+    """力变化率不超过 max_rate N/s (平滑性约束, 防冲击)。"""
+    return STLGlobally(
+        STLAtom("force_rate", lambda x: abs(x[0]) - max_rate * dt),
+        a=0, b=0.1,
+    )

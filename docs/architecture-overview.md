@@ -119,15 +119,31 @@ $$M(\nu^+ - \nu^-) = J^{c^T}\Lambda, \quad \|\Lambda_t\| \leq \mu\Lambda_n$$
 | 阻抗控制 | 1kHz | <100μs | 硬实时 |
 | FOC + 自动关断 | 10kHz | <1μs | 硬件确定 |
 
-## 5. 硬件架构 (PCB 层级)
+## 5. 硬件架构 (物理栈 P1-P5)
 
-| 层级 | PCB | 关键芯片 | 层数 |
+> 采用三栈分离命名法（见 [09-project-skeleton/skeleton-and-layering-plan.md](09-project-skeleton/skeleton-and-layering-plan.md)）：控制栈 L1-L7（本文 §1），物理栈 P1-P5（本表），数据栈 D1-D5。安全层 S 与数据栈 D 为横切层。
+
+| 物理栈 | PCB | 关键芯片 | 层数 |
 |---|---|---|---|
-| L1 电源层 | 电源管理 PCB | PMIC, BMS, 电机驱动电源轨 | 4 |
-| L2 感知层 | 传感器融合 PCB | IMU, 摄像头接口, 力传感器 ADC | 6 |
-| L3 决策层 | 主控 PCB | Jetson Orin NX + LPDDR5 | 8 |
-| L4 执行层 | 电机驱动 PCB | STM32G4 + DRV8301 + 自动关机 | 4 |
-| L5 互联层 | 通信背板 | CAN-FD, RS485, Ethernet | 2 |
+| P1 电源层 | 电源管理 PCB | PMIC, BMS, 电机驱动电源轨 | 4 |
+| P2 感知层 | 传感器融合 PCB | IMU, 摄像头接口, 力传感器 ADC | 6 |
+| P3 决策层 | 主控 PCB | Jetson Orin NX + LPDDR5 | 8 |
+| P4 执行层 | 电机驱动 PCB | STM32G4 + DRV8301 + 自动关机 | 4 |
+| P5 互联层 | 通信背板 | CAN-FD, RS485, Ethernet | 2 |
+
+**与 SynapticForge 六层架构对齐**：SF-L6 算法迭代层 ↔ 横切数据栈 D；SF-L5 AI 规划层 ↔ 控制栈 L5-L7；SF-L4 编排层（ForgeCore）↔ 横切编排（EdaLab Open API/EPS 契约，见 contracts/）；SF-L3 硬件设计层 ↔ 物理栈 P1-P5 的设计自动化（EdaLab 引擎）；SF-L2 制造数据层 ↔ D3/D4；SF-L1 物理执行层 ↔ 控制栈 L1 + 物理栈实体。
+
+**横切安全层 S**：硬件关断 <1μs（电气）→ 熄弧 + 机械隔离 ~16ms（继电器/离合器，见 EdaLab relay-clutch 引擎）→ 机会约束握力滤波（1kHz）→ RL 动作安全包络投影（20Hz）。分段预算固化于 `contracts/safety_budget.yaml`。
+
+**横切数据栈 D1-D5**（SynapticForge 飞轮的具象化）：
+
+| 数据栈 | 内容 | 频率/时延 |
+|---|---|---|
+| D1 传感原始数据 | 相机/触觉/编码器/电流原始流 | 20Hz-10kHz |
+| D2 标注/遥测 | HIL 遥测 schema、标注对齐 | 控制周期级 |
+| D3 制造/批次数据 | ICT/FCT 结果、器件容差、SN 追溯 | 产线级 |
+| D4 RL 回放/DR 分布 | 域随机化参数（制造容差驱动）、回放格式 | 训练级 |
+| D5 版本三元组 | (policy_ver, hw_rev, batch) 归因索引 | 发布级 |
 
 ## 6. 数学模型完备性矩阵
 

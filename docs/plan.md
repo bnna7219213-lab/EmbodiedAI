@@ -232,6 +232,8 @@ AI 模型层参考 LLMInnovation 的分阶段研发路线。
 
 ### 2.2 PCB 层级规划
 
+> 命名规范：物理栈 P1-P5 编号见 [09-project-skeleton/skeleton-and-layering-plan.md](../09-project-skeleton/skeleton-and-layering-plan.md)（本表按功能命名，与 P 栈对应：主板=P3、电机驱动板=P4、传感器板=P2、电源板=P1、头部板=P2、通信背板=P5）。
+
 | PCB 名称 | 功能 | 关键元件 | 层数 |
 |---|---|---|---|
 | **主板 (Main Board)** | AI 推断 + 系统调度 | Jetson Orin / RK3588 + LPDDR5 | 8 层 |
