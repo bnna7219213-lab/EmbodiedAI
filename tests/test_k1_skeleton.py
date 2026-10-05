@@ -2,20 +2,17 @@
 
 覆盖: 契约加载校验、DBC 结构、安全链数值、CLI 子命令 (K1 三 + K2 二)、dynamics 模块。
 """
-import os
 import subprocess
 import sys
 import unittest
 from pathlib import Path
 
-SRC = Path(__file__).resolve().parents[1] / "src"
-os.environ.setdefault("PYTHONPATH", str(SRC))
-sys.path.insert(0, str(SRC))
+# v0.5: sys.path / 子进程环境统一由 tests/conftest.py 注入, 此处不再重复拼装。
+from conftest import REPO, SRC, SUB_ENV
 
 from embodied_ai.config import load_contract, validate_dbc
 
-REPO = Path(__file__).resolve().parents[1]
-_SUB_ENV = {**os.environ, "PYTHONPATH": str(SRC)}
+_SUB_ENV = SUB_ENV
 
 
 class TestK1Contracts(unittest.TestCase):
@@ -63,13 +60,25 @@ class TestK1Modules(unittest.TestCase):
 
 class TestK1CLI(unittest.TestCase):
     def test_cli_commands(self):
-        for cmd in [["audit"], ["contracts"], ["safety"], ["couple"], ["dr"]]:
+        for cmd in [["audit"], ["contracts"], ["safety"], ["couple"], ["dr"],
+                    ["sim"], ["sim2real"], ["biped"], ["nanogpt"], ["verify", "--no-pytest"]]:
             with self.subTest(cmd=cmd):
                 r = subprocess.run(
                     [sys.executable, "-m", "embodied_ai.cli", *cmd],
-                    capture_output=True, text=True, cwd=str(REPO), env=_SUB_ENV,
+                    capture_output=True, cwd=str(REPO), env=_SUB_ENV,
+                    encoding="utf-8", errors="replace",
                 )
                 self.assertEqual(r.returncode, 0, f"{cmd} failed:\n{r.stdout}\n{r.stderr}")
+
+    def test_cli_exit_nonzero_on_broken_contract(self):
+        """契约不可解析时 safety 必须以非 0 退出 (退出码语义可用)。"""
+        r = subprocess.run(
+            [sys.executable, "-m", "embodied_ai.cli", "contracts"],
+            capture_output=True, cwd=str(REPO),
+            env={**SUB_ENV, "PYTHONPATH": str(REPO)},  # src 不在路径 → 导入失败
+            encoding="utf-8", errors="replace",
+        )
+        self.assertNotEqual(r.returncode, 0)
 
 
 if __name__ == "__main__":

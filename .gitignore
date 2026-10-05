@@ -1,8 +1,28 @@
+# ---- Python ----
 __pycache__/
-*.pyc
-*.pyo
-.DS_Store
-*.class
-.gradle/
+*.py[cod]
+*.egg-info/
+.eggs/
 build/
+dist/
+.venv/
+venv/
+
+# ---- 测试 / 覆盖率 ----
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+
+# ---- 产物 (v0.5: output/ 此前被提交进仓库) ----
+output/
+checkpoints/
+logs/
+*.log
+
+# ---- IDE / OS ----
+.vscode/
 .idea/
+.DS_Store
+Thumbs.db

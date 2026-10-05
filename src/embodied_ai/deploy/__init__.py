@@ -1,11 +1,10 @@
-"""部署适配 — TensorRT / INT8 量化 / 端到端延迟核验。
+"""部署域 (吸收 NG12): 延迟审计 / 量化 / TensorRT 验证 / ARM 目标部署。
 
-K3 占位 (接 future-exploration-plan Phase B 对接):
-  - INT8/FP16 导出 (ONNX → TensorRT engine)
-  - Jetson Orin 延迟基准 (vla_tiny 目标 20Hz / 单帧 < 50ms)
-  - Quantization-Aware Training (QAT) Hook
-
-注: 实际部署依赖 TensorRT / torch.onnx.export, 当前为包骨架占位。
+K2 交付: latency_audit (hw_requirements 契约预算自动 diff)。
+v0.6: latency_audit 支持 budget_overrides — 由 platform.arm_budget_overrides()
+      为无 NPU/GPU 的 Linux on ARM 目标给出保守放大后的分段预算。
+K3+: 量化校准 / ONNX 导出 / 逐层精度验证。
 """
+from .latency_audit import audit_latency, LatencyAuditResult, LatencySegment
 
-__all__: list = []
+__all__ = ["audit_latency", "LatencyAuditResult", "LatencySegment"]

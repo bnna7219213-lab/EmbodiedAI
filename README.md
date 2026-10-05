@@ -4,7 +4,10 @@
 >
 > **定位**: 不拼装现有方案，从零构建"AI 神经网络模型 → PCB 硬件 → 电机驱动 → 具身智能体"全链条的端到端研发计划。
 >
-> **版本**: v0.3 | 更新日期: 2026-09-19
+> **版本**: v0.6 | 更新日期: 2026-10-06
+>
+> **一键验收**: `scripts\verify.bat` (cmd) / `.\scripts\verify.ps1` (PowerShell) → `RESULT=VERIFY_OK`
+> 或 `python -m embodied_ai.cli verify` (8 项聚合自检, 退出码即结论)
 
 ---
 
@@ -17,6 +20,32 @@
 5. **决策核心** — 强化学习的数学本质指导具身智能体训练，触觉为最稀缺感知
 6. **操作系统驱动** — 嵌入式 Linux on ARM 把 AI 决策变成电机旋转
 7. **契约先行** — 跨项目交互一律经 `contracts/` 机器可读契约，禁止文档口头约定
+
+---
+
+## 快速开始
+
+```bash
+# 1. 安装 (dev 含 pytest; sim/torch 为可选)
+pip install -e ".[dev]"
+
+# 2. 全量验收 (推荐入口)
+scripts\verify.bat                  # Windows cmd
+python -m embodied_ai.cli verify    # 跨平台, 退出码 0 = 全绿
+
+# 3. 单测
+python -m pytest -q
+
+# 4. 常用自检
+python -m embodied_ai.cli contracts
+python -m embodied_ai.cli safety
+python -m embodied_ai.cli sim --dr
+python -m embodied_ai.cli biped
+```
+
+CI (`.github/workflows/ci.yml`) 在 Python 3.10–3.13 × ubuntu/windows 上执行同一套
+`verify --no-pytest` + `pytest` + 全模块导入 + CLI 冒烟, 无需 mujoco/pybullet/torch
+即可全绿。
 
 ---
 
@@ -107,11 +136,93 @@
 
 ## 代码
 
+> v0.5 目录修正: README 此前指向 `src/core/`、`src/control/` 等**不存在**的路径
+> (v0.3 重组后未同步)。下表为当前真实路径。
+
+### 仿真环境 (src/embodied_ai/simulation/) — G7 缺口修复
+
 | 文件 | 内容 |
 |---|---|
-| [src/core/climbing_dynamics_core.py](src/core/climbing_dynamics_core.py) | ★ 核心 ★ 攀岩竞技动力学纯 numpy 实现 (Hert接触 + 摆荡 + dyno + EKF + 滑脱前兆) |
-| [src/core/mcts_integration.py](src/core/mcts_integration.py) | NeRF 增强的 MCTS 攀岩规划 + NeRF 价值网络训练 |
-| [src/control/household_robot_system.py](src/control/household_robot_system.py) | 完整家庭服务机器人系统: 4层架构 (MCTS + Diffusion + 阻抗 + FOC) |
+| [base_env.py](src/embodied_ai/simulation/base_env.py) | SimEnv 抽象基类 (对齐 Gymnasium API, 统一仿真/真机接口) |
+| [reference_env.py](src/embodied_ai/simulation/reference_env.py) | ★ v0.5 ★ 纯 numpy 参考环境 (零外部依赖, 默认可用, 支撑 Sim2Real 离线验证) |
+| [mujoco_env.py](src/embodied_ai/simulation/mujoco_env.py) | MuJoCo 包装器: 桌面抓取 + 双足 + 简单臂 (MJCF 程序化生成; 需 `pip install mujoco`) |
+| [pybullet_env.py](src/embodied_ai/simulation/pybullet_env.py) | PyBullet 包装器 (备选平台, URDF 导入; 需 `pip install pybullet`) |
+| [domain_randomization.py](src/embodied_ai/simulation/domain_randomization.py) | 域随机化引擎: 5 类别 (动力学/执行器/传感器/视觉/环境) + 课程学习 + 制造容差注入 |
+| [sim_to_real.py](src/embodied_ai/simulation/sim_to_real.py) | Sim-to-Real 迁移管线: 差距量化 + 自动诊断 + 建议 + BC 数据采集 |
+| `__init__.py` | ★ v0.5 ★ `make_env()` / `available_backends()` 后端自动选择 (auto→mujoco→pybullet→reference) |
+
+### 运动控制 (src/embodied_ai/control/) — G9 缺口修复
+
+| 文件 | 内容 |
+|---|---|
+| [biped_locomotion.py](src/embodied_ai/control/biped_locomotion.py) | 双足行走: LIPM + ZMP 周期性解析步态 + 捕获点 + 足端轨迹 (v0.5 修复发散) |
+| [household_robot_system.py](src/embodied_ai/control/household_robot_system.py) | 家庭服务机器人 20Hz 控制器: 4 层架构 (MCTS + Diffusion + 阻抗 + FOC) |
+
+### 工程化 (v0.5 新增)
+
+| 文件 | 内容 |
+|---|---|
+| [console.py](src/embodied_ai/console.py) | 终端安全输出层: UTF-8 强制 + 不可编码字符 ASCII 降级 (根治 GBK 崩溃) |
+| [verification.py](src/embodied_ai/verification.py) | 聚合自检 (契约/安全/仿真/迁移/步态/CLI/pytest), 退出码即结论 |
+| [adapters/nanogpt.py](src/embodied_ai/adapters/nanogpt.py) | nanoGPT 训练底座适配: 仓库探测 + 超参映射 + 训练计划导出 + BC 数据集校验 |
+| [scripts/verify.bat](scripts/verify.bat) / [verify.ps1](scripts/verify.ps1) | 一键验收入口 (编排, 不含断言副本) |
+| [.github/workflows/ci.yml](.github/workflows/ci.yml) | CI: Python 3.10–3.13 × ubuntu/windows 矩阵 + 全模块导入 + CLI 冒烟 |
+
+### 目标平台 (src/embodied_ai/platform/) — Linux on ARM 能力 (v0.6 新增)
+
+| 文件 | 内容 |
+|---|---|
+| [arm_linux.py](src/embodied_ai/platform/arm_linux.py) | ★ v0.6 ★ aarch64 目标探测 (架构/板卡/加速器/RT/isolcpus/CAN/内存/温度) + 就绪评估 + 预算缩放 + systemd 单元渲染 |
+| [docs/04-hardware/embedded-linux-arm.md 第 7 部分](docs/04-hardware/embedded-linux-arm.md) | 能力层用法、判定项与契约对应、CI 中的 ARM 覆盖 |
+
+此前"目标板能不能跑 20Hz"全靠人登板 `cat /proc/cpuinfo`；现在
+`embodied-audit platform --root <目标板快照>` 可**离线判定**并以退出码给结论。
+输入全是文件系统，因此在 x86 Windows 开发机与 CI 上都能完整验证。
+
+### 核心资产
+
+| 文件 | 内容 |
+|---|---|
+| [dynamics/climbing_dynamics_core.py](src/embodied_ai/dynamics/climbing_dynamics_core.py) | ★ 核心 ★ 攀岩竞技动力学纯 numpy 实现 (Hertz 接触 + 摆荡 + dyno + EKF + 滑脱前兆) |
+| [planning/mcts_integration.py](src/embodied_ai/planning/mcts_integration.py) | NeRF 增强的 MCTS 攀岩规划 + NeRF 价值网络训练 |
+| [safety/formal/](src/embodied_ai/safety/formal/) | 形式化安全: STL 规约 + 区间可达集 + ISO 13482 + 16ms 预算闭环 (创新 #4) |
+
+---
+
+## 命令行 (`embodied-audit`)
+
+```bash
+pip install -e ".[dev]"          # 安装 (dev 含 pytest)
+
+embodied-audit audit             # 五项目资产状态汇总 (需兄弟仓库存在)
+embodied-audit contracts         # contracts/ 四件套校验 (DBC 9 消息 / CRC 覆盖)
+embodied-audit safety            # 安全链 16ms 预算核对 + SIL2 PFH
+embodied-audit couple [--live]   # EdaLab 11 步主链 (dry 默认 / live 真调 Kotlin)
+embodied-audit dr                # 飞轮 DR 制造容差闭环 (ICT/FCT/遥测 → DR YAML)
+
+embodied-audit sim    [--scene point_mass] [--backend auto] [--steps 20] [--dr]
+embodied-audit sim2real [--episodes 3] [--steps 300] [--noise 0.02]
+embodied-audit biped  [--steps 6] [--step-length 0.15] [--step-time 1.0]
+embodied-audit nanogpt [--size vla_tiny] [--out output/nanogpt]
+
+# Linux on ARM 目标能力 (v0.6)
+embodied-audit platform [--root <目标板快照>] [--as-target] [--strict]
+                        [--json probe.json] [--emit-units ./units]
+embodied-audit verify [--no-pytest]   # 一键全量自检, 退出码即结论
+```
+
+`platform` 退出码：0 = 无 BLOCKING；1 = 至少一项 BLOCKING（缺 CAN、内存不足、非 aarch64…）。
+目标板快照可离线评估，无需登板：
+
+```bash
+ssh robot@orin 'tar -C / -cf - proc/cpuinfo proc/cmdline proc/meminfo \
+                sys/firmware/devicetree sys/class sys/devices/system/cpu dev etc' \
+  | tar -C ./snap -xf -
+embodied-audit platform --root ./snap
+```
+
+`sim` 在无 mujoco/pybullet 环境自动回退到零依赖 `reference` 后端, 因此仿真链路
+在 CI 与本机始终可跑通。
 
 ---
 

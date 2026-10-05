@@ -1,0 +1,134 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: pytest (py${{ matrix.python-version }}, ${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Unit tests
+        run: python -m pytest -q
+
+      - name: One-shot verification (contracts + safety + sim + gait)
+        run: python -m embodied_ai.cli verify --no-pytest
+
+  arm64:
+    name: linux/arm64 (QEMU) — 目标架构回归
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      # 在真实 aarch64 用户态里跑测试: 验证"Linux on ARM"不是只在 x86 上成立
+      - uses: uraimo/run-on-arch-action@v3
+        with:
+          arch: aarch64
+          distro: ubuntu22.04
+          githubToken: ${{ github.token }}
+          install: |
+            apt-get update -y
+            apt-get install -y python3 python3-pip
+          run: |
+            python3 -m pip install --upgrade pip
+            python3 -m pip install -e ".[dev]"
+            python3 -m pytest -q
+            # 探测结果为信息用途 (QEMU 容器里没有 CAN/NPU/thermal, 不以退出码判定)
+            python3 -m embodied_ai.cli platform --json arm_probe.json || true
+            python3 -m embodied_ai.cli verify --no-pytest
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arm64-probe
+          path: arm_probe.json
+          if-no-files-found: ignore
+
+  aarch64-wheel:
+    name: build wheel (linux aarch64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build (pure-python, arch independent)
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel --outdir dist
+      - name: Report wheel tags
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          for w in sorted(Path("dist").glob("*.whl")):
+              print(w.name)
+              # 纯 Python wheel 必须带 py3-none-any, 否则在 aarch64 上装不上
+              assert "py3-none-any" in w.name, f"非纯 Python wheel: {w.name}"
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheel
+          path: dist/*.whl
+
+  lint:
+    name: import & packaging sanity
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+      - name: Import every module (no optional deps installed)
+        run: |
+          python - <<'PY'
+          import importlib, pkgutil
+          import embodied_ai
+          mods = [m.name for m in pkgutil.walk_packages(
+              embodied_ai.__path__, prefix="embodied_ai.")]
+          failed = []
+          for m in sorted(mods):
+              try:
+                  importlib.import_module(m)
+              except Exception as e:            # noqa: BLE001
+                  failed.append(f"{m}: {type(e).__name__}: {e}")
+          print("imported:", len(mods) - len(failed), "/", len(mods))
+          for f in failed:
+              print("FAILED", f)
+          raise SystemExit(1 if failed else 0)
+          PY
+      - name: CLI smoke (all subcommands exit 0)
+        run: |
+          python -m embodied_ai.cli contracts
+          python -m embodied_ai.cli safety
+          python -m embodied_ai.cli sim
+          python -m embodied_ai.cli sim2real
+          python -m embodied_ai.cli biped
+          python -m embodied_ai.cli nanogpt

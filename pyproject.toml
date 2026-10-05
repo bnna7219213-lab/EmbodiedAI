@@ -4,11 +4,20 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "embodied-ai"
-version = "0.1.0"
+version = "0.6.0"
 description = "EmbodiedAI: AI 神经网络模型 → PCB 硬件 → 电机驱动 → 具身智能体 全链条研发 (三栈分离: 控制L/物理P/数据D/安全S横切)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
 dependencies = ["numpy", "pyyaml"]
+
+[project.optional-dependencies]
+# 仿真后端 (可选): 缺失时 make_env 自动回退到零依赖 reference 后端
+sim = ["mujoco", "pybullet"]
+# 模型训练 (可选): 缺失时 VLA 走静态验证路径 (HAS_TORCH=False)
+torch = ["torch"]
+# 开发/CI
+dev = ["pytest>=7.0", "pytest-subtests"]
 
 [project.scripts]
 embodied-audit = "embodied_ai.cli:main"
@@ -18,3 +27,8 @@ where = ["src"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# v0.5: 此前 Windows 中文环境下 CLI 输出 emoji 会抛 UnicodeEncodeError,
+# 测试继承 locale 编码后 stdout 解码也会炸。统一以 UTF-8 跑测试。
+# (tests/test_k4_simulation.py 另有一组 PYTHONIOENCODING=gbk 的回归用例,
+#  专门验证降级路径, 与此处不冲突)
+filterwarnings = ["error::pytest.PytestUnhandledThreadExceptionWarning"]

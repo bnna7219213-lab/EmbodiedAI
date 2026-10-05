@@ -991,3 +991,93 @@ MODULE_AUTHOR("EmbodiedAI Project");
 │   - 运行在: 裸机 / FreeRTOS                          │
 └─────────────────────────────────────────────────────┘
 ```
+
+---
+
+## 第 7 部分：工程化能力层 — 把"登板人肉看"变成"可自动判定"
+
+> v0.6 新增。前 6 部分讲的是**知识**（怎么写驱动、怎么配内核）；
+> 这一部分讲的是**能力**（怎么让机器替你判断这块板子能不能上）。
+>
+> 此前仓库里没有任何代码消费前 6 部分：目标板是不是 aarch64、CAN 在不在、
+> 是不是 PREEMPT_RT、有没有 NPU、`isolcpus` 配没配 —— 全靠人登板执行
+> `cat /proc/cpuinfo` 一项项看。"Jetson Orin 20Hz 推理"这条硬指标在交付前
+> 没有可判定的闸门。
+
+### 7.1 能力清单
+
+| 能力 | 入口 | 说明 |
+|---|---|---|
+| 目标画像探测 | `probe_host(root=...)` | 读 `/proc`+`/sys`+`/dev`+`/etc` 形成画像；**输入全是文件**, 因此可对"目标板快照"离线评估 |
+| 就绪评估 | `evaluate_readiness(target, req, as_target=...)` | 对照 `contracts/hw_requirements.yaml` 判 BLOCKING / WARNING / INFO / N/A |
+| 预算缩放 | `arm_budget_overrides(target)` | 无 NPU/GPU 时把 15ms 推理预算按保守系数放大, 回灌 `deploy.audit_latency` |
+| 部署产物 | `render_systemd_units(target, out)` | 按探测到的 `isolcpus` 生成带 `CPUAffinity` 的单元文件 |
+| CLI | `embodied-audit platform` | 探测 + 判定 + 导出, **退出码即结论** |
+
+### 7.2 用法
+
+```bash
+# (a) 在目标板上: 完整就绪判定 (这是唯一会判 BLOCKING 的模式)
+embodied-audit platform --as-target --json /var/log/embodied/probe.json
+
+# (b) 在开发机上评估目标板的 sysfs 快照 (推荐: 不必登板就能判定)
+ssh robot@orin 'tar -C / -cf - proc/sys/kernel proc/cpuinfo proc/cmdline proc/meminfo \
+                          sys/firmware/devicetree sys/class sys/devices/system/cpu dev etc' \
+  | tar -C ./snap -xf -
+embodied-audit platform --root ./snap --emit-units ./units
+
+# (c) 在笔记本上: 只看看这台机器的信息, 不做判定 (硬件类检查标 N/A)
+embodied-audit platform
+```
+
+退出码语义：
+- `0` = 无 BLOCKING；
+- `1` = 至少一项 BLOCKING（如缺 CAN、内存低于契约 50%、非 aarch64）。
+
+### 7.3 判定项与契约的对应关系
+
+| 检查项 | 严重度 | 需求来源 |
+|---|---|---|
+| `arch` | BLOCKING | `compute.target_board: jetson_orin_nx_16gb` ⇒ aarch64 |
+| `board` | WARNING | 设备树 `model` 与契约板名比对 |
+| `simd_neon` | BLOCKING | ARMv8 基线（`asimd`/`neon` 必带） |
+| `memory` | BLOCKING(<50%)/WARNING | 板名里的 `16gb` ⇒ 16 GB |
+| `can_interface` | BLOCKING | `communication.bus: can_fd`（关节下发唯一通道） |
+| `accelerator` | WARNING | `compute.preprocessing.gpu_preprocess_required: true` |
+| `preempt_rt` | WARNING | 内核导出 `/sys/kernel/realtime` 或版本串含 `-rtN` |
+| `cpu_governor` | WARNING | 调频会引入抖动，应为 `performance` |
+| `isolated_cpus` | WARNING | 大核专用于控制（文档 `isolcpus=4,5,6,7`） |
+| `thermal` | WARNING | `< 85 °C` |
+
+### 7.4 两条刻意的设计约束
+
+1. **不可判定 ≠ 失败**。读不到 `/proc/cpuinfo`（非 Linux 主机）时，
+   NEON / RT 内核 / cpufreq 等项标 **N/A** 而不是 FAIL。很多"跨平台探测脚本"
+   在 Windows 上全项爆红，就是没做这一步。
+2. **判定与否必须由调用方显式选择**。默认 `platform` 只探测信息；
+   只有 `--as-target` 或 `--root`（快照）才做完整判定。否则 CI runner 会因为
+   "没有 CAN / 没有 NPU" 被判 BLOCKING —— 结论虽然正确，但对"我在笔记本上
+   跑一下看看"是纯噪声。显式化之后：开发机不假红，目标板不漏判。
+
+### 7.5 与既有闸门的关系（不是另起一套）
+
+```
+contracts/hw_requirements.yaml (50ms / 15ms 预算, 唯一真源)
+        │
+        ├── platform.arm_budget_overrides(target)   ← 无加速器时保守放大
+        │
+        └── deploy.audit_latency(budget_overrides=...)  ← 同一个 50ms 闸门
+```
+
+纯 CPU 的 ARM 板上，"15ms 推理"这个前提是**带 GPU/NPU** 才成立的
+（`preprocessing.gpu_preprocess_required: true`）。不放大预算就会把"跑不动"
+误判成"通过"。缩放系数是**保守占位值**，模块里明确写着必须用目标板实测替换，
+不做隐式承诺。
+
+### 7.6 CI 中的 ARM 覆盖
+
+`.github/workflows/ci.yml` 有两个 ARM 相关 job：
+- `arm64`：用 QEMU + `run-on-arch-action` 在**真实 aarch64 用户态**跑完整测试套件
+  （验证"Linux on ARM"不只是 x86 上成立），并把探测 JSON 作为 artifact 上传；
+- `aarch64-wheel`：断言产出的 wheel 是 `py3-none-any`（纯 Python），
+  否则在 aarch64 目标板上装不上。

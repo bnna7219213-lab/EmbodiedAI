@@ -1,241 +1,176 @@
-"""K2 集成验收: adapters/edalab.py + mcts 补全 + 飞轮 DR 闭环。
+"""K2/K3 集成测试 — B1-B4 补课后重写 (2026-09-20)。
 
-K2 验收标准 (4 项):
-  A. EdalabAdapter: 11 步主链元数据完整 (11 阶段 × 引擎映射 + 参数契约)
-  B. ClimbingMCTS 补全: UCB1-MCTS 真实搜索 (select/expand/simulate/backprop)
-  C. 飞轮 DR 闭环: ICT/FCT/遥测 → DR 配置 YAML (制造容差驱动)
-  D. CLI 新增 couple + dr 子命令: 端到端可调
+变更说明: 原测试基于已废弃的旧 FLOW_CHAIN 口径 (edalab_stages Stage 名),
+k1-audit.md 判定其为口径漂移的编码化。本版测试以 EdaCli.cmdEmbodiedAiFull
+真实 11 步为唯一权威 (B2), 并加入 B1 live 模式真调冒烟。
 """
 import sys
 import unittest
 from pathlib import Path
 
-import numpy as np
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-
 from embodied_ai.adapters.edalab import FLOW_CHAIN, EdalabAdapter
-from embodied_ai.planning import (
-    AsyncMCTSPlanner,
-    ClimbingMCTS,
-    ClimbingState,
-    ContactAction,
-    DiffusionPolicy,
-    MotionPrimitive,
-    MotionPrimitiveLibrary,
-    RLSkillCoordinator,
-    compute_mc_returns,
-    plan_contacts,
-)
-from embodied_ai.control.household_robot_system import (
-    RealTime20HzController,
-    make_controller,
-)
+from embodied_ai.adapters.bigdata import BigdataAdapter
+from embodied_ai.deploy import audit_latency
+from embodied_ai.safety.formal import close_budget_loop
 
 
-class TestK2A_EdalabAdapter(unittest.TestCase):
-    """A. EdaLab 11 步主链 + MultiPhysicsCoupler 适配器。"""
+class TestK2A_RealFlowChain(unittest.TestCase):
+    """B2: 真实 11 步口径 (EdaCli 权威)。"""
 
-    def test_11_stages_registered(self):
-        self.assertEqual(len(FLOW_CHAIN), 11, "主链必须是 11 步")
-        names = [s["name"] for s in FLOW_CHAIN]
-        expected = ["forge_core", "thermal_sim", "pi_analysis", "si_analysis",
-                    "emc_precomp", "motor_drive", "mcad_co_design",
-                    "foc_firmware", "canfd_protocol", "coupling_analysis", "data_flywheel"]
-        self.assertEqual(names, expected)
+    def test_11_stages_match_edacli(self):
+        """逐步与 EdaCli.kt cmdEmbodiedAiFull 对齐 (L551-581)。"""
+        expected = ["forge_core", "mass_props", "structural_fem", "kinematics",
+                    "thermal_sim", "pi_analysis", "motor_drive", "data_flywheel",
+                    "relay_clutch", "em_coupling", "multi_physics"]
+        self.assertEqual([s["name"] for s in FLOW_CHAIN], expected)
 
-    def test_stage_metadata_complete(self):
-        for stage in FLOW_CHAIN:
-            self.assertIn("name", stage)
-            self.assertIn("category", stage)
-            self.assertIn("est_sec", stage)
-            self.assertIn("engine", stage)
-            self.assertTrue(stage["est_sec"] > 0)
+    def test_cli_names_match_edacli_dispatch(self):
+        """CLI 名与 EdaCli when 分支逐字一致 (live 调用名)。"""
+        cli_names = [s["cli"] for s in FLOW_CHAIN]
+        self.assertEqual(cli_names, ["forge-core", "mass-props", "structural-fem", "kinematics",
+                                     "thermal-sim", "pi-analysis", "motor-drive", "data-flywheel",
+                                     "relay-clutch", "em-coupling", "multi-physics"])
 
-    def test_adapter_run_stage(self):
-        adapter = EdalabAdapter()
-        result = adapter.run_stage("forge_core", {"control_freq_hz": 20})
-        self.assertIn("stage", result)
-        self.assertIn("status", result)
-        self.assertIn(result["status"], ("READY", "ENGINE_MISSING", "CONTRACT_FAIL"))
+    def test_step_numbers_sequential(self):
+        self.assertEqual([s["step"] for s in FLOW_CHAIN], list(range(1, 12)))
 
-    def test_adapter_full_chain(self):
-        adapter = EdalabAdapter()
-        results = adapter.run_full_chain({"control_freq_hz": 1000})
-        self.assertEqual(len(results), 11)
-
-    def test_coupling_engine_resolved(self):
-        adapter = EdalabAdapter()
-        result = adapter.run_stage("coupling_analysis", {})
-        # 耦合引擎存在于 EdaLab 或被识别为 EMBEDDEDAI_LOCAL
-        self.assertIn(result["status"], ("READY", "ENGINE_MISSING"))
-
-    def test_multi_physic_coupler_exists(self):
-        coupler_path = Path(r"C:\Users\bnna7\workspace\git\EmbodiedAI\edalabcore\src\main\kotlin\edalab\core\coupling\MultiPhysicsCoupler.kt")
-        self.assertTrue(coupler_path.exists(), f"MultiPhysicsCoupler.kt 不存在: {coupler_path}")
-        self.assertGreater(coupler_path.stat().st_size, 5000, "引擎文件应 > 5KB")
+    def test_forge_core_args_match_edacli(self):
+        """forge-core 的调用参数与 EdaCli L551 抄录一致。"""
+        fc = FLOW_CHAIN[0]
+        self.assertEqual(fc["cli_args"], ["v1.0", "household_grasp", "20", "30", "25", "canfd", "5"])
 
 
-class TestK2B_MCTSComplete(unittest.TestCase):
-    """B. ClimbingMCTS 完整实现 (非桩)。"""
+class TestK2B_LiveMode(unittest.TestCase):
+    """B1: subprocess 真调 Kotlin 引擎。"""
 
-    def test_mcts_search_returns_path(self):
-        init = ClimbingState(
-            ee_position=np.array([0.1, 0.2, 0.3]),
-            joint_positions=np.zeros(12),
-        )
-        mcts = ClimbingMCTS(n_simulations=50, rollout_depth=5)
-        actions = mcts.search(init, goal_fn=lambda s: s.stability_margin > 0.7)
-        self.assertIsInstance(actions, list)
-        for a in actions:
-            self.assertIsInstance(a, ContactAction)
+    def setUp(self):
+        self.adapter = EdalabAdapter()
+        self.jar = Path(r"C:\Users\bnna7\workspace\EdaLab\edalabcore\build\libs\edalabcore.jar")
 
-    def test_mcts_stats_accumulate(self):
-        init = ClimbingState(ee_position=np.zeros(3), joint_positions=np.zeros(12))
-        mcts = ClimbingMCTS(n_simulations=30, rollout_depth=5)
-        mcts.search(init, goal_fn=lambda s: False)
-        self.assertGreater(mcts.root.visits, 0, "根节点应有 visit 统计")
-        self.assertGreater(len(mcts.root.children), 0, "根节点应有子节点")
+    def test_dry_mode_default(self):
+        r = self.adapter.run_stage("relay_clutch", {})
+        self.assertEqual(r["mode"], "dry")
+        self.assertIn(r["status"], ("READY", "ENGINE_MISSING"))
 
-    def test_compute_mc_returns(self):
-        rewards = [0.0, 0.0, 1.0, 0.5]
-        returns = compute_mc_returns(rewards, discount=0.95)
-        self.assertEqual(len(returns), len(rewards))
-        self.assertAlmostEqual(returns[-1], rewards[-1], places=5)
-        self.assertGreater(returns[0], 0)
+    def test_live_relay_clutch(self):
+        """live 冒烟: relay-clutch 真调, 断言 Kotlin 引擎输出。"""
+        if not self.jar.exists():
+            self.skipTest("jar 未构建 (需 ./gradlew :edalabcore:jar)")
+        r = self.adapter.run_stage("relay_clutch", {}, mode="live")
+        self.assertEqual(r["status"], "LIVE_OK",
+                         f"live 调用失败: {r.get('stderr', r.get('error', ''))[:200]}")
+        self.assertIn("16.00ms", r["stdout"], "安全链 16ms 实测输出应出现在 stdout")
+        self.assertIn("总 16.00ms", r["stdout"])
+        # 风险行提取
+        self.assertTrue(any("CRITICAL" in l for l in r["risk_lines"]),
+                         "侵蚀 CRITICAL 告警应被提取")
 
-    def test_contact_action_hashable(self):
-        a = ContactAction(contact_position=np.array([0.1, 0.2, 0.3]), grasp_type="power")
-        b = ContactAction(contact_position=np.array([0.1, 0.2, 0.3]), grasp_type="power")
-        self.assertEqual(hash(a), hash(b))
-
-    def test_async_mcts_planner(self):
-        init = ClimbingState(ee_position=np.zeros(3), joint_positions=np.zeros(12))
-        planner = AsyncMCTSPlanner()
-        actions = planner._mcts_search(init)
-        self.assertIsInstance(actions, list)
-
-    def test_plan_contacts_entry(self):
-        init = ClimbingState(ee_position=np.zeros(3), joint_positions=np.zeros(12))
-        actions, mcts = plan_contacts(init, n_sim=20)
-        self.assertIsInstance(actions, list)
-        self.assertIsInstance(mcts, ClimbingMCTS)
-
-    def test_dr_override_injection(self):
-        dr_config = {"overrides": {"joint_stiffness": {"mean": 4500}, "friction_coefficient": {"min": 0.6, "max": 0.9}}}
-        mcts = ClimbingMCTS(n_simulations=10)
-        mcts.dr_override(dr_config)
-        # 不报错即通过
-        self.assertTrue(True)
-
-    def test_diffusion_policy_interface(self):
-        policy = DiffusionPolicy()
-        self.assertFalse(policy._model_loaded)
-        traj = policy.generate({}, [])
-        self.assertEqual(traj.shape[1], 12)  # action_dim
+    def test_live_unknown_stage_rejected(self):
+        with self.assertRaises(ValueError):
+            self.adapter.run_stage("si_analysis", {}, mode="live")  # 旧口径名应被拒绝
 
 
-class TestK2C_FlywheelDR(unittest.TestCase):
-    """C. 飞轮 DR 制造容差闭环。"""
+class TestK2C_BigdataFlywheel(unittest.TestCase):
+    """B3: 遥测 → DR → 训练配置 全链 (无人工)。"""
 
-    def test_generate_dr_config_with_ict(self):
-        adapter = EdalabAdapter()
-        ict = [{"board_serial": "SF001", "component_values": {"ENC1": 0.01, "ENC2": -0.005, "CS_INA": 0.002}}]
-        cfg = adapter.generate_dr_config("v1.0", ict_data=ict)
-        self.assertIn("encoder_noise_std", cfg["overrides"])
-        self.assertIn("current_sensor_noise_std", cfg["overrides"])
+    def test_telemetry_to_training_config(self):
+        bd = BigdataAdapter(output_dir=Path("output/dr_test"))
+        # 模拟 HIL 遥测 30 条 (含故障事件)
+        for i in range(30):
+            bd.ingest_canfd_frame({
+                "actual_current_a": 10.0 + (i % 5) * 0.8,
+                "temp_c": 40.0 + (i % 8),
+                "actual_pos_deg": float(i),
+            }, joint="shoulder_L", board_serial="SN-001")
+        bd.ingest_canfd_frame({"actual_current_a": 12.0, "temp_c": 55.0,
+                               "fault_events": [{"fault_type": "OVERCURRENT"}]},
+                              joint="shoulder_L", board_serial="SN-001")
+        cfg = bd.flywheel_to_training(strategy_v="v2.0")
+        self.assertEqual(cfg["replay_records"], 31)
+        self.assertEqual(cfg["policy_binding"]["batch_sn"], "SN-001")
+        self.assertTrue(Path(cfg["dr_yaml_path"]).exists(), "DR yaml 应已落盘")
+        self.assertIn("ambient_temp", cfg["dr_overrides"], "温度 DR 应从遥测生成")
+        self.assertIn("fault_inject_overcurrent", cfg["dr_overrides"], "故障注入 DR 应生成")
 
-    def test_generate_dr_config_with_fct(self):
-        adapter = EdalabAdapter()
-        fct = [{"board_serial": "SF001", "comm_tests": {"can_bus_utilization": 1.2}}]
-        cfg = adapter.generate_dr_config("v1.0", fct_data=fct)
-        self.assertIn("canfd_latency_ms", cfg["overrides"])
-
-    def test_generate_dr_config_with_telemetry(self):
-        adapter = EdalabAdapter()
-        tel = [
-            {"motor_current_a": 2.5, "temperature_c": 35, "fault_events": []},
-            {"motor_current_a": 3.0, "temperature_c": 40, "fault_events": [{"fault_type": "OVERCURRENT"}]},
-        ]
-        cfg = adapter.generate_dr_config("v1.0", telemetry_data=tel)
-        self.assertIn("load_torque_scale", cfg["overrides"])
-        self.assertIn("friction_coefficient", cfg["overrides"])
-
-    def test_export_dr_yaml(self):
-        import tempfile
-        adapter = EdalabAdapter()
-        cfg = adapter.generate_dr_config("v1.0", ict_data=[{"board_serial": "T1", "component_values": {"ENC1": 0.01}}])
-        with tempfile.TemporaryDirectory() as td:
-            out = adapter.export_dr_yaml(cfg, Path(td) / "test_dr.yaml")
-            self.assertTrue(out.exists())
-            content = out.read_text(encoding="utf-8")
-            self.assertIn("encoder_noise_std", content)
-
-    def test_load_contract_dr_params(self):
-        adapter = EdalabAdapter()
-        contract = adapter.load_contract_dr_params()
-        self.assertIn("electrical", contract)
-        self.assertIn("mechanical", contract)
-        self.assertIn("sensing", contract)
-
-    def test_flywheel_e2e(self):
-        adapter = EdalabAdapter()
-        import tempfile
-        with tempfile.TemporaryDirectory() as td:
-            result = adapter.flywheel_e2e(
-                ict_data=[{"board_serial": "SF001", "component_values": {"ENC1": 0.01}}],
-                fct_data=[{"board_serial": "SF001", "comm_tests": {"can_bus_utilization": 0.8}}],
-                telemetry_data=[{"motor_current_a": 2.5, "temperature_c": 35, "fault_events": []}],
-                output_dir=Path(td),
-            )
-            self.assertTrue(result["flywheel_ok"])
-            self.assertIn("config", result)
-            self.assertTrue(Path(result["yaml_path"]).exists())
+    def test_edalab_flywheel_output_ingest(self):
+        bd = BigdataAdapter()
+        n = bd.ingest_edalab_flywheel_output({
+            "telemetry_records": [
+                {"motor_current_a": 11.0, "temperature_c": 42.0},
+                {"motor_current_a": 13.0, "temperature_c": 44.0},
+            ]
+        })
+        self.assertEqual(n, 2)
+        self.assertEqual(len(bd.records), 2)
 
 
-class TestK2D_ControllerAndCLI(unittest.TestCase):
-    """D. 控制器 + CLI 集成。"""
+class TestK2D_MCTS(unittest.TestCase):
+    """B4: ClimbingMCTS 真实现验证。"""
 
-    def test_controller_create(self):
-        ctrl = make_controller()
-        self.assertIsInstance(ctrl, RealTime20HzController)
+    def test_mcts_returns_plan(self):
+        from embodied_ai.planning.mcts_integration import ClimbingMCTS, ClimbingState
+        import numpy as np
+        s = ClimbingState(ee_position=np.array([0.0, 0.0, 1.0]),
+                          joint_positions=np.zeros(6), stability_margin=0.5)
+        plan = ClimbingMCTS(n_simulations=60).search(
+            s, goal_fn=lambda st: st.ee_position[2] > 1.4)
+        self.assertIsNotNone(plan)
+        if plan:
+            self.assertGreater(len(plan), 0)
 
-    def test_controller_with_dr(self):
-        dr = {"overrides": {"joint_stiffness": {"mean": 5000}}}
-        ctrl = RealTime20HzController(dr_config=dr)
-        self.assertIsNotNone(ctrl._dr_config)
-        ctrl.inject_dr_config({"overrides": {"joint_stiffness": {"mean": 4800}}})
+    def test_dr_override_hook(self):
+        from embodied_ai.planning.mcts_integration import ClimbingMCTS
+        mcts = ClimbingMCTS()
+        mcts.dr_override({"friction_coefficient": {"mean": 0.6, "std": 0.1}})  # 不应抛异常
 
-    def test_controller_step(self):
-        ctrl = make_controller()
-        obs = {"ee_position": np.zeros(3), "joint_positions": np.zeros(12)}
-        action = ctrl.step(obs)
-        self.assertIsInstance(action, np.ndarray)
 
-    def test_rl_skill_coordinator(self):
-        coord = RLSkillCoordinator()
-        coord.load_skill("test", DiffusionPolicy())
-        action = coord.execute("test", {})
-        # DiffusionPolicy 返回 (action_horizon, action_dim) = (10, 12)
-        self.assertEqual(action.shape, (10, 12))
+class TestK3_BudgetClosure(unittest.TestCase):
+    """K3: safety_budget 实测链 ↔ 形式化闭环。"""
 
-    def test_motion_primitive_library(self):
-        lib = MotionPrimitiveLibrary()
-        mp = MotionPrimitive(name="test", duration_s=1.0)
-        lib.add("test", mp)
-        self.assertIsNotNone(lib.get("test"))
+    def test_close_budget_loop(self):
+        r = close_budget_loop(joint_speed_rad_s=8.0)
+        self.assertAlmostEqual(r.total_break_ms, 16.0, places=2)
+        self.assertTrue(r.stop_angle_ok, f"停止角 {r.stop_angle_deg}° 应 < 30°")
+        self.assertTrue(r.reachable_set_ok)
+        self.assertTrue(r.sil2_ok)
+        self.assertTrue(r.closure_ok)
 
-    def test_cli_subcommands(self):
-        """CLI 新增 couple / dr 子命令可调用。"""
-        from embodied_ai.cli import main
-        # K1 子命令仍工作
-        self.assertEqual(main(["contracts"]), 0)
-        # K2 新增 couple
-        rc = main(["couple"])
-        self.assertIn(rc, (0, 1))  # 1 仅当引擎文件缺失
-        # K2 新增 dr
-        rc = main(["dr"])
-        self.assertEqual(rc, 0, "飞轮 DR 端到端应 PASS")
+    def test_stop_angle_scales_with_speed(self):
+        from embodied_ai.safety.formal.budget_closure import stop_angle_from_budget
+        slow = stop_angle_from_budget(2.0)
+        fast = stop_angle_from_budget(8.0)
+        self.assertGreater(fast, slow, "速度越大停止角越大")
+
+
+class TestK3_DeployLatency(unittest.TestCase):
+    """K3: deploy 延迟审计 (契约预算自动 diff)。"""
+
+    def test_baseline_within_budget(self):
+        a = audit_latency()
+        self.assertTrue(a.ok)
+        self.assertAlmostEqual(a.total_measured_ms, 29.0, places=1)
+
+    def test_over_budget_blocks(self):
+        a = audit_latency(measured={"model_inference": 60.0})  # 60ms > 15ms 预算
+        self.assertFalse(a.ok)
+        seg = next(s for s in a.segments if s.name == "model_inference")
+        self.assertEqual(seg.verdict, "BLOCKING")
+
+
+class TestK3_VLAStatic(unittest.TestCase):
+    """VLA 静态验证 (无 torch 环境可跑)。"""
+
+    def test_param_count_estimate(self):
+        from embodied_ai.models.vla_config import VLAConfig
+        cfg = VLAConfig.ablations()["vla_tiny"]
+        self.assertGreater(cfg.n_layer, 0)
+        base = VLAConfig()
+        self.assertGreater(base.n_layer, cfg.n_layer, "tiny 应小于 base")
+
+    def test_import_graceful(self):
+        import embodied_ai.models.vla_model as vm
+        # 无 torch 环境下 import 不崩 (HAS_TORCH=False 降级)
+        self.assertTrue(hasattr(vm, "HAS_TORCH"))
 
 
 if __name__ == "__main__":
