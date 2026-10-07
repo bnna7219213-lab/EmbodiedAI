@@ -71,6 +71,9 @@ class BigdataAdapter:
 
         DBC 别名: actual_current_a→motor_current_a, temp_c→temperature_c
         (修复: 此前只认 DBC 名, 规范化名静默丢失 — gen_d4_dataset 触发)
+
+        frame 中超出 TelemetryRecord schema 的字段 (如 episode_id, scenario,
+        n_steps 等 D4 扩展元数据) 自动透传, 进入 records 的 dict 表示。
         """
         motor = frame.get("motor_current_a", frame.get("actual_current_a"))
         temp = frame.get("temperature_c", frame.get("temp_c"))
@@ -84,7 +87,13 @@ class BigdataAdapter:
             source=frame.get("source", source),
             board_serial=frame.get("board_serial", board_serial),
         )
-        self.records.append(rec.as_dict())
+        row = rec.as_dict()
+        # 透传 frame 中的扩展元数据字段 (D4 episode_id / scenario 等)
+        schema_keys = set(row.keys())
+        for k, v in frame.items():
+            if k not in schema_keys:
+                row[k] = v
+        self.records.append(row)
         return rec
 
     def ingest_hil_telemetry(self, rows: List[Dict[str, Any]]) -> int:
