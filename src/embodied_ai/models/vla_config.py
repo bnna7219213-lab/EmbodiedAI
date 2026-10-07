@@ -151,13 +151,23 @@ class VLAConfig:
 
     @staticmethod
     def ablations() -> dict:
-        """消融配置集合 — 对比所用 (~4 个配置, 单因素变化)."""
+        """消融配置集合 — 单因素变化对比。
+
+        v0.7: 补齐 vla_small。此前 CLI `nanogpt --size vla_small` 与
+        adapters/nanogpt.py 的 _SIZE_TO_VLA 支持该档位, 但直接调
+        ablations()["vla_small"] 会 KeyError (契约不一致)。
+        """
         base = VLAConfig()
         return {
             "vla_tiny": VLAConfig(
                 n_layer=4, n_embd=256, n_head=4,
                 num_vision_layers=2, action_horizon=5,
                 ablation_name="vla_tiny",
+            ),
+            "vla_small": VLAConfig(
+                n_layer=6, n_embd=320, n_head=5,
+                num_vision_layers=3, action_horizon=8,
+                ablation_name="vla_small",
             ),
             "vla_base": base,
             "vla_large": VLAConfig(

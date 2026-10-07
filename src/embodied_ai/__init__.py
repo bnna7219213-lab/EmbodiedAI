@@ -2,13 +2,19 @@
 
 子模块按控制栈 L 层映射:
 - models:     L6 VLA 小模型 (Vision-Language-Action, 复用 nanoGPT 管线模式)
-- dynamics:   L5/L1 接触动力学 (climbing_dynamics_core 迁入)
+              v0.7 + nn_core (零依赖训练内核) / diffusion_policy / bc_trainer /
+              rl_algorithms (PPO+SAC)
+- dynamics:   L5/L1 接触动力学 (climbing_dynamics_core) + 柔性体 (soft_body)
 - perception: 触觉-视觉感知 (多速率 EKF)
 - planning:   L5 MCTS 接触规划
-- control:    L4/L3 RL Actor / Diffusion / 20Hz 控制 + 双足步态
+- control:    L4/L3 RL Actor / Diffusion / 20Hz 控制 + 双足步态 (2D + 3D 全身)
 - simulation: L1/L3 仿真闭环 (参考环境 / MuJoCo / PyBullet + DR + Sim2Real)
-- safety:     横切安全层 S (形式化 STL/ISO 13482 + 概率性机会约束)
-- deploy:     部署 (量化/TensorRT/延迟核验)
+              v0.7 + real_robot_env (真机 CAN-FD 闭环)
+- hardware:   v0.7 新增 — FOC/SVPWM/自动关机链 + 灵巧手设计决策
+- learning:   v0.7 新增 — 终身学习 (EWC + 回放 + 遗忘度量)
+- safety:     横切安全层 S (形式化 STL/ISO 13482 + 机会约束 + 认证工程化)
+- deploy:     部署 (延迟核验 + VLA 推理 roofline 基准)
+- gui:        v0.7 新增 — 零依赖 Web 仪表盘 (L7)
 - platform:   Linux on ARM 目标能力 (探测 / 就绪评估 / 预算缩放 / systemd 单元)
 - adapters:   外部仓库适配 (EdaLab / nanoGPT / bigdata)
 - config:     契约加载 (contracts/ 四件套)
@@ -18,8 +24,9 @@
 K3 新增: models/ (VLA) + safety/formal/ (形式化安全 — 创新 #4)
 v0.5 新增: simulation/ (零依赖参考环境 + 后端自动选择) + console/ + verification/
 v0.6 新增: platform/ (Linux on ARM 目标能力层)
+v0.7 新增: 见 CHANGELOG v0.7 — 缺口补齐 (G6/G9/G10/G11/G12/L7/训练管线/真机闭环)
 """
 
 from . import console  # noqa: F401 — 导入即提供安全输出能力
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"

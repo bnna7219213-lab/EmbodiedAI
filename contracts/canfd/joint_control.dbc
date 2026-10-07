@@ -35,49 +35,49 @@ BS_:
 BU_: JETSON_MASTER, SHOULDER_L, SHOULDER_R, ELBOW_L, ELBOW_R, WRIST_L, WRIST_R, SAFETY_MCU
 
 BO_ 100 JointCmd_SHOULDER_L: 8 JETSON_MASTER
- SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" SHOULDER_L
+ SG_ target_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" SHOULDER_L
  SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" SHOULDER_L
  SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" SHOULDER_L
  SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
 
 BO_ 104 JointCmd_SHOULDER_R: 8 JETSON_MASTER
- SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" SHOULDER_R
+ SG_ target_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" SHOULDER_R
  SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" SHOULDER_R
  SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" SHOULDER_R
  SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
 
 BO_ 108 JointCmd_ELBOW_L: 8 JETSON_MASTER
- SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" ELBOW_L
+ SG_ target_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" ELBOW_L
  SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" ELBOW_L
  SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" ELBOW_L
  SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
 
 BO_ 112 JointCmd_ELBOW_R: 8 JETSON_MASTER
- SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" ELBOW_R
+ SG_ target_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" ELBOW_R
  SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" ELBOW_R
  SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" ELBOW_R
  SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
 
 BO_ 116 JointCmd_WRIST_L: 8 JETSON_MASTER
- SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" WRIST_L
+ SG_ target_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" WRIST_L
  SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" WRIST_L
  SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" WRIST_L
  SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
 
 BO_ 120 JointCmd_WRIST_R: 8 JETSON_MASTER
- SG_ target_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" WRIST_R
+ SG_ target_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" WRIST_R
  SG_ target_vel_dps : 16|15@0+ (0.01,0) [0|327.67] "deg/s" WRIST_R
  SG_ torque_lim_a : 31|8@0+ (0.1,0) [0|25.5] "A" WRIST_R
  SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
 
 BO_ 0 SyncFrame: 8 JETSON_MASTER
  SG_ sync_marker : 0|8@0+ (1,0) [0|255] ""  SHOULDER_L,SHOULDER_R,ELBOW_L,ELBOW_R,WRIST_L,WRIST_R
- SG_ time_low : 16|16@0+ (0.001,0) [0|65.535] "s" SHOULDER_L,SHOULDER_R,ELBOW_L,ELBOW_R,WRIST_L,WRIST_R
- SG_ time_high : 32|16@0+ (0.001,0) [0|65.535] "s" SHOULDER_L,SHOULDER_R,ELBOW_L,ELBOW_R,WRIST_L,WRIST_R
+ SG_ time_low : 16|16@0+ (0.01,0) [0|327.67] "s" SHOULDER_L,SHOULDER_R,ELBOW_L,ELBOW_R,WRIST_L,WRIST_R
+ SG_ time_high : 32|16@0+ (0.01,0) [0|327.67] "s" SHOULDER_L,SHOULDER_R,ELBOW_L,ELBOW_R,WRIST_L,WRIST_R
  SG_ crc8 : 56|8@0+ (1,0) [0|255] "" JETSON_MASTER
 
 BO_ 300 JointTelemetry_SHOULDER_L: 8 SHOULDER_L
- SG_ actual_pos_deg : 0|15@0+ (0.001,0) [0|65.535] "deg" JETSON_MASTER,SAFETY_MCU
+ SG_ actual_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" JETSON_MASTER,SAFETY_MCU
  SG_ actual_current_a : 16|11@0+ (0.01,0) [0|20.47] "A" JETSON_MASTER,SAFETY_MCU
  SG_ temp_c : 27|9@0+ (0.5,-20) [-20|235.5] "C" JETSON_MASTER,SAFETY_MCU
  SG_ status_flags : 40|8@0+ (1,0) [0|255] "" JETSON_MASTER,SAFETY_MCU

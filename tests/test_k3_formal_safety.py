@@ -191,9 +191,10 @@ class TestK3D_VLASkeleton(unittest.TestCase):
 
     def test_ablations(self):
         ablations = VLAConfig.ablations()
-        self.assertEqual(len(ablations), 4)
+        self.assertGreaterEqual(len(ablations), 4, "至少 4 个消融配置")
         self.assertIn("vla_tiny", ablations)
         self.assertIn("vla_base", ablations)
+        self.assertIn("vla_large", ablations)
 
     def test_config_roundtrip_json(self):
         cfg = VLAConfig(ablation_name="test_k3")

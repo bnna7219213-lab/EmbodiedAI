@@ -23,6 +23,7 @@ from .deploy import audit_latency
 from .platform import (ArmRequirements, arm_budget_overrides, evaluate_readiness,
                        probe_host, render_systemd_units, report_lines, summarize,
                        to_json)
+from typing import Any, Dict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
@@ -396,6 +397,233 @@ def cmd_platform(args):
     return 0 if s["ok"] else 1
 
 
+# --------------------------------------------------------------------------- #
+# v0.7 新增: 缺口补齐后的子命令
+# --------------------------------------------------------------------------- #
+def _emit_result(title: str, res: Dict[str, Any]) -> int:
+    """统一输出: 关键数值 + PASS/FAIL。"""
+    for k, v in res.items():
+        if k in ("ok", "report", "matrix", "ranking", "advice", "gap_diagnosis",
+                 "stages", "transport", "layers", "modules", "contracts", "events"):
+            continue
+        console.emit(f"    {k:34s} {v}")
+    ok = bool(res.get("ok"))
+    console.emit(f"\n{title}: {'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
+    return 0 if ok else 1
+
+
+def cmd_soft(args):
+    """G6 柔性体动力学 (XPBD)。"""
+    console.banner("G6 柔性体动力学 (XPBD 布料/毛巾)")
+    from .dynamics.soft_body import soft_body_demo
+
+    return _emit_result("柔性体", soft_body_demo())
+
+
+def cmd_wholebody(args):
+    """G9 双足 3D 全身控制。"""
+    console.banner("G9 双足 3D 全身控制 (3D ZMP + 6-DoF IK)")
+    from .control.whole_body import whole_body_demo
+
+    r = whole_body_demo(n_steps=args.steps)
+    console.emit(f"    IK 往返位置误差              {r['ik_position_err']:.3e}")
+    console.emit(f"    IK 往返旋转误差              {r['ik_rotation_err']:.3e}")
+    console.emit(f"    CoM 前进                     {r['com_advance_m']} m")
+    console.emit(f"    失稳帧                       {r['unstable_frames']}")
+    console.emit(f"    双脚/单脚支撑面积            "
+                 f"{r['support_area_both']:.4f} / {r['support_area_single']:.4f} m²")
+    ok = bool(r["ok"])
+    console.emit(f"\n3D 全身控制: {'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
+    return 0 if ok else 1
+
+
+def cmd_foc(args):
+    """优先级 (1): FOC + SVPWM + 自动关机链。"""
+    console.banner("FOC 驱动 + SVPWM + 硬件自动关机链")
+    from .hardware.foc_shutdown import ShutdownChain, foc_shutdown_demo
+
+    r = foc_shutdown_demo()
+    console.emit(f"    SVPWM 伏秒平衡误差           {r['svpwm_recon_err']:.3e} V")
+    console.emit(f"    电流环阶跃稳态误差           {r['current_step_ss_error_pct']:.4f} %")
+    console.emit(f"    电气关断                     {r['electrical_off_us']:.3f} us "
+                 f"(预算 1.0 us)")
+    console.emit(f"    总断开                       {r['total_break_ms']:.4f} ms "
+                 f"(预算 20 ms)")
+    console.emit(f"    停止角 @3rad/s               {r['stop_angle_deg']:.2f} deg")
+    console.emit(f"    30° 限额下的最大关节速度      "
+                 f"{r['max_safe_joint_speed_rad_s']:.3f} rad/s")
+    console.emit(f"    HIL 测试用例                 {r['n_hil_cases']} 条")
+    ok = bool(r["ok"])
+    console.emit(f"\nFOC/关机链: {'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
+    return 0 if ok else 1
+
+
+def cmd_hand(args):
+    """G11 灵巧手选型。"""
+    console.banner("G11 灵巧手设计决策")
+    from .hardware.dexterous_hand import dexterous_hand_demo
+
+    r = dexterous_hand_demo()
+    console.emit(f"    {'方案':18s} {'自由度':>6s} {'执行器':>7s} {'覆盖':>6s} "
+                 f"{'质量':>8s} {'kg':>6s}")
+    for m in r["matrix"]:
+        console.emit(f"    {m['design']:18s} {m['n_dof']:6d} {m['n_actuators']:7d} "
+                     f"{m['coverage']:6.2f} {m['mean_quality']:8.4f} {m['mass_kg']:6.2f}")
+    console.emit(f"\n  推荐: {r['recommended']}")
+    console.emit(f"  排序: {' > '.join(r['ranking'])}")
+    ok = bool(r["ok"])
+    console.emit(f"\n灵巧手选型: {'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
+    return 0 if ok else 1
+
+
+def cmd_real(args):
+    """真机闭环 (Sim-to-Real 最后一公里)。"""
+    console.banner("真机闭环 (Sim-to-Real)")
+    from .simulation.real_robot_env import real_robot_demo
+
+    r = real_robot_demo(steps=args.steps)
+    console.emit(f"    传输层                       {args.transport}")
+    console.emit(f"    真机回合评估                 {r['real_episodes_evaluated']}")
+    console.emit(f"    平均环回延迟                 {r['avg_latency_ms']:.3f} ms "
+                 f"({r['latency_samples']} 样本)")
+    console.emit(f"    安全闸门拦截超限动作         {r['safety_gate_blocked']}")
+    console.emit(f"    CRC8 往返                    {r['crc_roundtrip_ok']}")
+    console.emit(f"    差距诊断                     {r['gap_diagnosis']}")
+    ok = bool(r["ok"])
+    console.emit(f"\n真机闭环: {'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
+    return 0 if ok else 1
+
+
+def cmd_bench(args):
+    """优先级 (2): VLA 推理延迟基准。"""
+    console.banner("VLA 推理延迟基准 (roofline)")
+    from .deploy.jetson_bench import PLATFORMS, bench_vla
+
+    r = bench_vla(args.size, args.platform, args.precision)
+    for line in r.report().splitlines():
+        console.emit("   ", line)
+    console.emit(f"\n  受限类型: {r.bound}")
+    for a in r.advice:
+        console.emit(f"   - {a}")
+    ok = bool(r.ok)
+    console.emit(f"\n推理基准: {'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
+    return 0 if ok else 1
+
+
+def cmd_cert(args):
+    """G10 安全认证工程化。"""
+    console.banner("G10 安全认证证据包")
+    from .safety.certification import build_default_package, certification_demo
+
+    r = certification_demo()
+    console.emit(f"    PFH                          {r['pfh_per_hour']:.3e} /h "
+                 f"(目标 {1e-6:.0e})")
+    console.emit(f"    SFF / 架构约束               {r['sff_percent']:.2f}% / "
+                 f"{r['architecture_ok']}")
+    console.emit(f"    可达 SIL                     {r['achieved_sil']}")
+    console.emit(f"    RTM 覆盖 / 危害覆盖          {r['rtm_coverage']:.2f} / "
+                 f"{r['hazard_coverage']:.2f}")
+    console.emit(f"    结论                         {r['verdict']}")
+    if args.md:
+        out = Path(args.md)
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(build_default_package().to_markdown(), encoding="utf-8")
+        console.emit(f"\n  证据包 Markdown 落盘: {out}")
+    ok = bool(r["ok"])
+    console.emit(f"\n认证包: {'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
+    return 0 if ok else 1
+
+
+def cmd_lifelong(args):
+    """G12 终身学习。"""
+    console.banner("G12 终身学习 (EWC + 回放)")
+    from .learning.lifelong import lifelong_demo
+
+    r = lifelong_demo()
+    console.emit(f"    基线遗忘 (无保护)            {r['baseline_forgetting']:.4f}")
+    console.emit(f"    EWC+回放遗忘                 {r['ewc_forgetting']:.4f}")
+    console.emit(f"    任务0 最终误差 基线/EWC      "
+                 f"{r['baseline_task0_final']:.4f} / {r['ewc_task0_final']:.4f}")
+    console.emit(f"    可塑性: λ 过大时新任务误差   {r['stiff_task1_error']:.4f} "
+                 f"(正常 {r['ewc_task1_error']:.4f})")
+    ok = bool(r["ok"])
+    console.emit(f"\n终身学习: {'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
+    return 0 if ok else 1
+
+
+def cmd_train(args):
+    """训练管线自检: BC / PPO / SAC / 扩散策略。"""
+    # 各算法"能稳定超过基线"所需的步数量级差 2 个数量级, 统一默认值必然让其中
+    # 几个假 FAIL (PPO 40 次迭代学不完, 扩散 300 次去噪还没收敛)。
+    _TRAIN_DEFAULT_ITERS = {"bc": 600, "ppo": 120, "sac": 12000, "diffusion": 1200}
+    iters = int(args.iters) if args.iters else _TRAIN_DEFAULT_ITERS[args.algo]
+    console.banner(f"训练管线自检 ({args.algo}, iters={iters})")
+    if args.algo == "bc":
+        from .models.bc_trainer import bc_demo
+
+        r = bc_demo(n_episodes=args.episodes, iters=iters)
+        console.emit(f"    样本数                       {r['n_samples']}")
+        console.emit(f"    成功率 专家/克隆/随机        "
+                     f"{r['expert_success']:.2f} / {r['bc_success']:.2f} / "
+                     f"{r['random_success']:.2f}")
+        console.emit(f"    回报   专家/克隆/随机        "
+                     f"{r['expert_return']:.2f} / {r['bc_return']:.2f} / "
+                     f"{r['random_return']:.2f}")
+        console.emit(f"    验证 MSE 改善                {r['mse_improvement_x']:.1f}x")
+    elif args.algo == "diffusion":
+        from .models.diffusion_policy import fit_demo
+
+        r = fit_demo(iters=iters)
+        console.emit(f"    去噪损失                     "
+                     f"{r['loss_before']:.4f} -> {r['loss_after']:.4f}")
+        console.emit(f"    采样轨迹 vs 专家 距离        {r['dist_after']:.4f} "
+                     f"(随机基线 {r['dist_before']:.4f})")
+        console.emit(f"    DDIM 10 步距离               {r['ddim_dist']:.4f}")
+    else:
+        from .models.rl_algorithms import rl_demo
+
+        r = rl_demo(args.algo, iters=iters)
+        console.emit(f"    回报 初/末                   "
+                     f"{r['initial_return']:.2f} -> {r['final_return']:.2f}")
+        console.emit(f"    随机基线                     {r['random_return']:.2f}")
+        console.emit(f"    诊断                         {r['diagnostics']}")
+    ok = bool(r["ok"])
+    console.emit(f"\n{args.algo} 训练: {'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
+    return 0 if ok else 1
+
+
+def cmd_gui(args):
+    """L7 仪表盘: --once 只自检, 否则常驻服务。"""
+    console.banner("L7 运行台 (零依赖 Web 仪表盘)")
+    from .gui import gui_demo
+    from .gui.server import make_server
+
+    if args.once:
+        r = gui_demo(port=args.port)
+        console.emit(f"    静态页                       {r['static_html_bytes']} bytes")
+        console.emit(f"    模块可达                     {r['modules_ok']}/{r['modules_total']}")
+        console.emit(f"    安全链 / 认证                {r['chain_total_ms']} ms / "
+                     f"{r['cert_verdict']}")
+        console.emit(f"    3D 步态前进 / 失稳           {r['biped_advance_m']} m / "
+                     f"{r['biped_unstable']}")
+        console.emit(f"    灵巧手推荐                   {r['hand_recommended']}")
+        console.emit(f"    STO 指令 → mode              {r['mode_after_sto']}")
+        ok = bool(r["ok"])
+        console.emit(f"\n仪表盘: {'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
+        return 0 if ok else 1
+
+    srv, st = make_server(port=args.port)
+    host, port = srv.server_address
+    console.emit(f"  监听 http://{host}:{port}/  (Ctrl-C 退出)")
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        console.emit("  已停止")
+    finally:
+        srv.server_close()
+    return 0
+
+
 def cmd_verify(args):
     """聚合自检 — 契约 / 安全 / 仿真 / 迁移 / 步态 / 测试套件, 退出码表达总结果。"""
     from . import verification
@@ -491,11 +719,54 @@ def main(argv=None):
     p_verify = sub.add_parser("verify", help="一键全量自检 (CI / scripts 入口)")
     p_verify.add_argument("--no-pytest", action="store_true", help="跳过 pytest 套件")
 
+    # ---- v0.7 ---- #
+    p_soft = sub.add_parser("soft", help="G6 柔性体动力学 (XPBD) 自检")
+    p_wb = sub.add_parser("wholebody", help="G9 双足 3D 全身控制 (3D ZMP + IK)")
+    p_wb.add_argument("--steps", type=int, default=4)
+
+    p_foc = sub.add_parser("foc", help="FOC + SVPWM + 硬件自动关机链时序验证")
+    p_hand = sub.add_parser("hand", help="G11 灵巧手设计决策矩阵")
+
+    p_real = sub.add_parser("real", help="真机闭环 (Sim-to-Real 最后一公里)")
+    p_real.add_argument("--transport", default="mock",
+                        choices=["mock", "socketcan", "serial"])
+    p_real.add_argument("--steps", type=int, default=60)
+
+    p_bench = sub.add_parser("bench", help="VLA 推理延迟基准 (roofline)")
+    p_bench.add_argument("--size", default="vla_tiny",
+                         choices=["vla_tiny", "vla_small", "vla_base", "vla_large"])
+    p_bench.add_argument("--platform", default="jetson_orin_nx_16gb",
+                         choices=["jetson_orin_nx_16gb", "jetson_orin_nano",
+                                  "jetson_agx_orin", "rk3588", "generic_arm_cpu"])
+    p_bench.add_argument("--precision", default="int8", choices=["int8", "fp16", "fp32"])
+
+    p_cert = sub.add_parser("cert", help="G10 安全认证证据包 (SIL/PFH/RTM)")
+    p_cert.add_argument("--md", default=None, help="导出 Markdown 证据包到该路径")
+
+    p_ll = sub.add_parser("lifelong", help="G12 终身学习 (EWC + 回放)")
+
+    p_train = sub.add_parser("train", help="训练管线自检 (BC/PPO/SAC/扩散)")
+    p_train.add_argument("--algo", default="bc",
+                         choices=["bc", "ppo", "sac", "diffusion"])
+    p_train.add_argument("--iters", type=int, default=None,
+                         help="省略时按算法取已标定的默认规模")
+    p_train.add_argument("--episodes", type=int, default=10)
+
+    p_gui = sub.add_parser("gui", help="L7 运行台 (零依赖 Web 仪表盘)")
+    p_gui.add_argument("--port", type=int, default=8765)
+    p_gui.add_argument("--once", action="store_true",
+                       help="只跑自检 (起服务→拉 API→关服务), 不常驻")
+
     ns = ap.parse_args(argv)
     cmds = {"audit": cmd_audit, "contracts": cmd_contracts, "safety": cmd_safety,
             "couple": cmd_couple, "dr": cmd_dr, "sim": cmd_sim, "sim2real": cmd_sim2real,
             "biped": cmd_biped, "nanogpt": cmd_nanogpt, "platform": cmd_platform,
-            "verify": cmd_verify}
+            "verify": cmd_verify,
+            # v0.7
+            "soft": cmd_soft, "wholebody": cmd_wholebody, "foc": cmd_foc,
+            "hand": cmd_hand, "real": cmd_real, "bench": cmd_bench,
+            "cert": cmd_cert, "lifelong": cmd_lifelong, "train": cmd_train,
+            "gui": cmd_gui}
     return cmds[ns.cmd](ns)
 
 

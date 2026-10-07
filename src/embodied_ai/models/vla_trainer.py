@@ -185,9 +185,14 @@ if HAS_TORCH:
             }
 
         def save_checkpoint(self, suffix: str = "last", path: str | None = None):
-            """保存检查点 (模型权重 + 优化器状态 + iter 进度 + config)。"""
+            """保存检查点 — nanoGPT CheckpointManager 模式 (原子写 + latest 副本 + RNG 状态)。
+
+            结构: model/optimizer/iter/best_val_loss/config/loss_log/rng_state
+            """
+            import random as _random
+
             if path is None:
-                path = f"{self.cfg.ckpt_dir}/{self.cfg.ablation_name}_{suffix}.pt"
+                path = f"{self.cfg.ckpt_dir}/{self.cfg.ablation_name}_ckpt_step_{self.iter_num}.pt"
             Path(path).parent.mkdir(parents=True, exist_ok=True)
             ckpt = {
                 "model": self.model.state_dict(),
@@ -196,19 +201,45 @@ if HAS_TORCH:
                 "best_val_loss": self.best_val_loss,
                 "config": self.cfg.to_json(),
                 "loss_log": self.loss_log,
+                "rng_state": {
+                    "python": _random.getstate(),
+                    "torch": torch.get_rng_state(),
+                },
             }
-            torch.save(ckpt, path)
+            # nanoGPT 模式: 临时文件 + 原子 rename (防中断写坏)
+            tmp = Path(path).with_suffix(".tmp")
+            torch.save(ckpt, tmp)
+            import os as _os
+            _os.replace(tmp, path)
+            # latest 副本 (Windows 无 symlink 权限时用复制)
+            latest = Path(path).parent / f"{self.cfg.ablation_name}_latest.pt"
+            import shutil as _shutil
+            _shutil.copy2(path, latest)
             return path
 
         def load_checkpoint(self, path: str):
-            """加载检查点 (恢复模型 + 优化器 + iter)。"""
-            ckpt = torch.load(path, map_location=self.cfg.device)
+            """加载检查点 (恢复模型 + 优化器 + iter + loss 历史 + RNG)。"""
+            path = Path(path)
+            if not path.exists():
+                latest = path.parent / f"{self.cfg.ablation_name}_latest.pt"
+                if latest.exists():
+                    path = latest  # nanoGPT 模式: 自动回退 latest
+                else:
+                    raise FileNotFoundError(f"检查点不存在: {path}")
+            ckpt = torch.load(path, map_location="cpu", weights_only=False)
             self.model.load_state_dict(ckpt["model"])
             self.optimizer.load_state_dict(ckpt["optimizer"])
             self.iter_num = ckpt["iter"]
             self.best_val_loss = ckpt["best_val_loss"]
             self.loss_log = ckpt.get("loss_log", [])
-            return ckpt
+            rng = ckpt.get("rng_state", {})
+            if "python" in rng:
+                import random as _random
+                _random.setstate(rng["python"])
+            if "torch" in rng:
+                torch.set_rng_state(rng["torch"])
+            return {"path": str(path), **{k: v for k, v in ckpt.items()
+                                           if k not in ("model", "optimizer", "rng_state")}}
 
 else:
     class VLATrainer:  # type: ignore[no-redef]

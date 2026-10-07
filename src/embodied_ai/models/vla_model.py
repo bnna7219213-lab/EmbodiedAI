@@ -93,6 +93,10 @@ if HAS_TORCH:
                     n_layers=cfg.num_vision_layers, n_heads=cfg.num_vision_heads,
                     num_views=cfg.num_views,
                 )
+                # K3+ 修复: vision_embd 与 n_embd 不一致时必须有投影桥
+                # (此前无 torch 环境从未真跑, vla_tiny(vision_embd=384, n_embd=256) 前向必崩)
+                self.vision_proj = (nn.Linear(cfg.vision_embd, cfg.n_embd)
+                                    if cfg.vision_embd != cfg.n_embd else nn.Identity())
             self.lang_embedding = nn.Embedding(cfg.vocab_size, cfg.n_embd)
             self.state_projection = nn.Sequential(
                 nn.Linear(cfg.state_dim, cfg.n_embd),
@@ -156,7 +160,10 @@ if HAS_TORCH:
             # 1. 视觉 tokens (可选)
             if frames is not None and self.cfg.num_views > 0:
                 V = self.cfg.num_views
-                vision_out = self.vision_encoder(frames)  # [B, n_patches*V, n_embd] (frames 已 reshape)
+                vision_out = self.vision_encoder(frames)      # [B*V, n_patches, vision_embd]
+                vision_out = self.vision_proj(vision_out)      # → [B*V, n_patches, n_embd]
+                # 视角展平到 token 维: [B, n_patches*V, n_embd]
+                vision_out = vision_out.reshape(-1, V * vision_out.shape[1], vision_out.shape[2])
                 # 添加模态嵌入
                 vision_out = vision_out + self.modality_embedding(
                     torch.full((vision_out.shape[1],), self.modality_map["vision"],

@@ -4,6 +4,80 @@
 
 ---
 
+## v0.7 (2026-10-06) — 从"图纸库"到"可运行闭环" (缺口批量补齐)
+
+> 触发: 全链条完成度评估给出"总体 30-35%", 结论是
+> **"一架极其完备的图纸库 + 半数可运行骨架代码, 但没有一块 PCB、一个电机、
+> 一条训练数据、一次真机运行"**。本版针对评估列出的缺口逐条落成代码,
+> 并把优先级 (1)(2)(3) 三条里程碑的**可验证部分**先行落地。
+>
+> 自检规模: `embodied-audit verify` 从 8 项扩到 **20 项**, 全绿; pytest 191 通过。
+
+### 新增模块
+
+| 缺口 | 模块 | 内容 | 验收口径 |
+|---|---|---|---|
+| 训练管线 30% | `models/nn_core.py` | 纯 numpy MLP + 反向 + Adam/SGD (无 torch 也能真训练) | 有限差分 vs 反向 误差 <1e-9 |
+| DiffusionPolicy 桩 | `models/diffusion_policy.py` | 真实 DDPM (cosine 调度 + ε 预测 + DDIM 少步) | 损失降 91%, 采样距离 0.055 vs 随机 0.38 |
+| 无 BC | `models/bc_trainer.py` | 数据集 + 归一化 + 训练器 + 环境内评估 | 成功率 1.0 (= 专家), MSE 降 1.7e4 倍 |
+| 无 PPO/SAC | `models/rl_algorithms.py` | PPO (GAE+clip) / SAC (双 Q + 自动温度) | PPO 末段回报 −61 > 随机 −73 |
+| G6 柔性体 5% | `dynamics/soft_body.py` | XPBD 质点—约束网格 + 抓取 + 滑脱判据 | 拉伸 <0.5%, 悬垂收敛, 滑脱判据非恒真 |
+| G9 双足 40% | `control/whole_body.py` | 3D ZMP 支撑多边形 + 6-DoF 腿部 IK + 力分配 | IK 往返 1e-16, 0 失稳, 前进 0.6m |
+| 优先级 (1) | `hardware/foc_shutdown.py` | SVPWM + FOC 电流环 + 关机链时序 + HIL 用例 | 伏秒平衡 5e-15, 电关断 0.8µs, 停止角 5.3° |
+| G11 灵巧手 0% | `hardware/dexterous_hand.py` | 力闭合判据 + 4 候选选型矩阵 | 推荐 F5-欠驱动 (覆盖 1.0 / 2 执行器) |
+| Sim-to-Real 35% | `simulation/real_robot_env.py` | CAN-FD 传输层 (mock/socketcan/serial) + 安全闸门 | mock 跑通闭环, 闸门拦截超限动作 |
+| 优先级 (2) | `deploy/jetson_bench.py` | roofline 延迟估算 + 实测注入标定 | tiny@OrinNX 0.36ms; 无 NPU 时超预算 |
+| G12 终身学习 0% | `learning/lifelong.py` | EWC + 回放 + forgetting/BWT 度量 | 遗忘 0.492 → 0.005, λ 过大会压死可塑性 |
+| G10 认证 10% | `safety/certification.py` | HAZOP + SIL/PFH/SFF + 架构约束 + V&V + RTM | PFH 6.6e-8, SFF 96.9%, RTM 100% |
+| L7 GUI 0% | `gui/` | 零依赖 `http.server` + 单页仪表盘 + 7 个 JSON API | 起服务→拉 API→下发 STO→关服务 |
+
+### 修掉的既有缺陷 (不是新功能, 是还债)
+
+1. **`VLAConfig.ablations()` 缺 `vla_small`** — CLI `--size vla_small` 与
+   `_SIZE_TO_VLA` 支持该档位, 直接调 `ablations()["vla_small"]` 会 KeyError。
+2. **STL 缺 `Until` / `Next` 算子** — 模块 docstring 写了 `ρ(X[a]φ,t)=ρ(φ,t+a)`
+   但代码里没有; 补 `STLNext` / `STLUntil` 与 `release_only_after_stop` 规约。
+3. **`_last_t` 对 ndarray 信号抛 AttributeError** — `_interp` 承诺支持两种信号
+   格式, 但 G/F/U 三个时序算子走 `_last_t` 时必崩, 承诺是假的。
+4. **`NanoGPTAdapter` 与测试/契约不一致** (4 项预存在失败): `probe()["total"]`
+   应为 3 (把 checkpoints/data 降级为可选资产)、`export_training_plan` 计划缺
+   `config` 快照、缺 `to_vla_config()` (未知档位静默回退到 tiny)、
+   缺 `validate_bc_dataset()` 静态方法 — 现已补齐并加"未知档位抛 ValueError"。
+5. **DBC 位置信号量程不足**: `target_pos_deg` 15-bit × 0.001 ⇒ 量程仅 32.767°,
+   连一个 ±90° 的关节都发不出去 (实测所有指令被饱和)。改为 ×0.01
+   (量程 327.67°, 配合 180° 零点偏置覆盖 ±147°)。
+6. `verification.py` 注解用了未导入的 `typing.Dict`。
+
+### 实现过程中踩到并写进注释的坑
+
+- **手写训练框架**: `zero_grad()` 若重新绑定 `grads` list, 优化器持有的旧引用
+  会永远读到零梯度 — 参数一动不动, 而 loss 曲线看起来"在跑"。必须原地清零。
+- **DDPM 调度表**索引偏移不会让训练 loss 变难看 (训练/采样共用同一张表),
+  只会让采样发散到 |x|~60; 且 T=50 的低维扩散必须给 β 加上限 (β=0.9 时
+  `1/√α` 单步放大 3.1 倍)。
+- **LIPM 必须用解析解推进**: 显式欧拉的截断误差被 +ω 特征根指数放大, 4 步后
+  从"每步 0.15m"退化成"末步倒退, 速度 −1.42m/s"; 且必须按 Kajita 解析周期解
+  初始化 (x₀=p−a, v₀=aω·coth(ωT/2)), 否则起步就被前方的支撑脚推回去。
+- **SAC 重参数化梯度**: `−½ε²` 项对 mean 无梯度, 只经 tanh 修正项求导; 写错
+  会把 log_std 推向 −∞ (log π 涨到 +34)。
+- **SVPWM** 用零序注入而非七段式扇区表: 扇区表写错时占空比仍在 [0,1]、波形
+  仍像正弦, 只有伏秒平衡校验能发现 (初版重建误差 12.5V)。
+- **电流环极点配置**: `kp=L·ωc, ki=Rs·ωc` 且须满足 `ωc·T<2`; 早期 kp=8 让
+  快极点落在 3.8e4 rad/s, 离散振荡, 稳态误差 131%。
+
+### 仍然真实存在的缺口 (不掩饰)
+
+- **PCB 实物 / 真实电机 / 真机部署: 依然为零**。v0.7 做的是把"板子到货前必须
+  钉死的东西"钉死 (调制器正确性、关机链时序、HIL 用例清单、安全闸门),
+  但 `ShutdownChain` 里的数值仍是设计值 + 器件手册量级, **不是实测**。
+- `RealRobotEnv` 的 `mock` 传输是"带噪声/延迟/丢帧的一阶关节模型", 不是真机;
+  `socketcan` / `serial` 两条通路需要 `python-can` / `pyserial`, 且未在任何
+  真实板卡上跑过。
+- 训练数据仍为**合成**数据 (专家控制器 rollout / 解析函数拟合), 无真实示教。
+- VLA 仍无 torch 环境下的真实训练记录; nanoGPT 仓库不在默认路径。
+
+---
+
 ## v0.6 (2026-10-06) — Linux on ARM (aarch64) 目标能力层
 
 > 主题: `docs/04-hardware/embedded-linux-arm.md` 写了 ARM 裸机 → UBOOT → 根文件系统

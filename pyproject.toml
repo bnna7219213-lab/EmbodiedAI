@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "embodied-ai"
-version = "0.6.0"
+version = "0.7.0"
 description = "EmbodiedAI: AI 神经网络模型 → PCB 硬件 → 电机驱动 → 具身智能体 全链条研发 (三栈分离: 控制L/物理P/数据D/安全S横切)"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -24,6 +24,11 @@ embodied-audit = "embodied_ai.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# v0.7: 仪表盘单页 (L7)。不打包的话 `pip install` 后 /api/status 返回 200 而
+# "/" 返回 404 — 服务端与前端必须一起分发。
+[tool.setuptools.package-data]
+embodied_ai = ["gui/static/*.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

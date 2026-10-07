@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>EmbodiedAI 运行台</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --line:#30363d; --fg:#e6edf3; --dim:#8b949e;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --accent:#58a6ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.5 -apple-system,"Segoe UI","Noto Sans CJK SC",sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:12px 18px;
+         border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:10}
+  header h1{margin:0;font-size:16px;font-weight:600}
+  .mode{padding:2px 10px;border-radius:10px;border:1px solid var(--line);font-size:12px}
+  .mode.STO{color:var(--bad);border-color:var(--bad)}
+  .mode.RUNNING{color:var(--ok);border-color:var(--ok)}
+  .mode.HOLD{color:var(--warn);border-color:var(--warn)}
+  .spacer{flex:1}
+  button{background:#21262d;color:var(--fg);border:1px solid var(--line);
+         border-radius:6px;padding:5px 12px;cursor:pointer;font-size:13px}
+  button:hover{border-color:var(--accent)}
+  button.danger{color:var(--bad);border-color:#5c2222}
+  main{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:14px;padding:16px}
+  section{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  section h2{margin:0 0 8px;font-size:13px;color:var(--dim);font-weight:600;letter-spacing:.4px}
+  table{width:100%;border-collapse:collapse;font-size:12px}
+  td,th{padding:3px 6px;border-bottom:1px solid #21262d;text-align:left}
+  th{color:var(--dim);font-weight:500}
+  .pill{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px}
+  .pill.ok{background:rgba(63,185,80,.15);color:var(--ok)}
+  .pill.bad{background:rgba(248,81,73,.15);color:var(--bad)}
+  .pill.warn{background:rgba(210,153,34,.15);color:var(--warn)}
+  .kv{display:flex;justify-content:space-between;padding:2px 0;font-size:12px}
+  .kv span:last-child{color:var(--dim)}
+  #chart{width:100%;height:110px;display:block;margin-top:4px}
+  pre{background:#0b0f14;border:1px solid var(--line);border-radius:6px;padding:8px;
+      max-height:150px;overflow:auto;font-size:11px;color:var(--dim);margin:6px 0 0}
+  .log{font-size:11px;color:var(--dim);max-height:120px;overflow:auto}
+  .log div{padding:1px 0}
+</style>
+</head>
+<body>
+<header>
+  <h1>EmbodiedAI 运行台</h1>
+  <span class="mode" id="mode">…</span>
+  <span style="color:var(--dim);font-size:12px" id="ver"></span>
+  <span class="spacer"></span>
+  <button onclick="cmd('resume')">恢复</button>
+  <button onclick="cmd('hold')">暂停</button>
+  <button class="danger" onclick="cmd('sto')">STO 关断</button>
+</header>
+
+<main>
+  <section>
+    <h2>安全链 (横切层 S)</h2>
+    <div id="safety"></div>
+  </section>
+
+  <section>
+    <h2>3D 双足步态 (G9)</h2>
+    <div id="biped"></div>
+  </section>
+
+  <section>
+    <h2>仿真回报曲线 (G7)</h2>
+    <div id="sim"></div>
+    <canvas id="chart" width="600" height="110"></canvas>
+  </section>
+
+  <section>
+    <h2>灵巧手选型 (G11)</h2>
+    <div id="hand"></div>
+  </section>
+
+  <section>
+    <h2>模块 / 契约</h2>
+    <div id="status"></div>
+  </section>
+
+  <section>
+    <h2>事件</h2>
+    <div class="log" id="events"></div>
+  </section>
+</main>
+
+<script>
+const j = (u) => fetch(u).then(r => r.json());
+const pill = (ok, text) => `<span class="pill ${ok ? 'ok' : 'bad'}">${text ?? (ok ? 'OK' : 'FAIL')}</span>`;
+const kv = (k, v) => `<div class="kv"><span>${k}</span><span>${v}</span></div>`;
+
+async function cmd(c) {
+  await fetch('/api/command', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({cmd: c})
+  });
+  load();
+}
+
+function drawChart(series) {
+  const c = document.getElementById('chart'), g = c.getContext('2d');
+  g.clearRect(0, 0, c.width, c.height);
+  if (!series || !series.length) return;
+  const lo = Math.min(...series), hi = Math.max(...series);
+  const n = series.length, w = c.width / n;
+  g.strokeStyle = '#58a6ff'; g.lineWidth = 1.5; g.beginPath();
+  series.forEach((v, i) => {
+    const y = hi === lo ? c.height / 2
+      : c.height - (v - lo) / (hi - lo) * (c.height - 12) - 6;
+    i ? g.lineTo(i * w, y) : g.moveTo(0, y);
+  });
+  g.stroke();
+  g.fillStyle = '#8b949e'; g.font = '10px sans-serif';
+  g.fillText(`n=${n}  final=${series[n - 1].toFixed(3)}`, 4, 12);
+}
+
+async function load() {
+  const [st, sf, bp, hd, sm] = await Promise.all([
+    j('/api/status'), j('/api/safety'), j('/api/biped'), j('/api/hand'),
+    j('/api/sim?steps=120')
+  ]);
+
+  document.getElementById('mode').textContent = st.mode;
+  document.getElementById('mode').className = 'mode ' + st.mode;
+  document.getElementById('ver').textContent = 'v' + st.version;
+
+  document.getElementById('safety').innerHTML =
+    kv('关断链总时延', sf.chain_total_ms + ' ms / 预算 ' + sf.budget_max_ms + ' ms') +
+    kv('停止角', sf.stop_angle_deg + '° ' + pill(sf.closure_ok)) +
+    kv('SIL2 PFH 目标', sf.sil2_pfh_target.toExponential(0) + ' /h') +
+    kv('认证包结论', pill(sf.certification.verdict === 'PASS', sf.certification.verdict)) +
+    kv('PFH 实测', sf.certification.pfh_per_hour.toExponential(2) + ' /h') +
+    kv('SFF', sf.certification.sff_percent + '%') +
+    kv('RTM 覆盖', (sf.certification.rtm_coverage * 100).toFixed(0) + '%');
+
+  document.getElementById('biped').innerHTML =
+    kv('前进距离', bp.advance_m + ' m') +
+    kv('失稳帧', bp.unstable_frames + ' ' + pill(bp.unstable_frames === 0)) +
+    kv('侧向偏移', bp.lateral_m + ' m') +
+    kv('左腿关节', bp.q_left.map(x => x.toFixed(2)).join(', ')) +
+    kv('右腿关节', bp.q_right.map(x => x.toFixed(2)).join(', '));
+
+  document.getElementById('sim').innerHTML =
+    kv('步数', sm.steps) + kv('末回报', sm.final_return.toFixed(4));
+  drawChart(sm.returns);
+
+  let rows = '';
+  for (const m of hd.matrix) {
+    rows += `<tr><td>${m.design}</td><td>${m.n_actuators}</td>` +
+            `<td>${m.coverage}</td><td>${m.mean_quality}</td>` +
+            `<td>${m.mass_kg}</td></tr>`;
+  }
+  document.getElementById('hand').innerHTML =
+    `<div class="kv"><span>推荐</span><span style="color:var(--accent)">${hd.recommend.recommended}</span></div>` +
+    `<table><tr><th>方案</th><th>执行器</th><th>覆盖</th><th>质量</th><th>kg</th></tr>${rows}</table>`;
+
+  let mods = '';
+  for (const [k, v] of Object.entries(st.modules)) mods += kv(k, pill(v === 'ok', v));
+  for (const [k, v] of Object.entries(st.contracts)) mods += kv('contract ' + k, pill(v === 'ok', v));
+  document.getElementById('status').innerHTML = mods;
+
+  document.getElementById('events').innerHTML =
+    (st.events || []).slice().reverse()
+      .map(e => `<div>[${new Date(e.t * 1000).toLocaleTimeString()}] ${e.level}: ${e.msg}</div>`)
+      .join('') || '<div>（无事件）</div>';
+}
+
+load().catch(e => {
+  document.body.insertAdjacentHTML('afterbegin',
+    `<pre style="color:#f85149">加载失败: ${e}</pre>`);
+});
+setInterval(load, 5000);
+</script>
+</body>
+</html>

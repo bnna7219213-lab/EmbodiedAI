@@ -4,10 +4,15 @@
 >
 > **定位**: 不拼装现有方案，从零构建"AI 神经网络模型 → PCB 硬件 → 电机驱动 → 具身智能体"全链条的端到端研发计划。
 >
-> **版本**: v0.6 | 更新日期: 2026-10-06
+> **版本**: v0.7 | 更新日期: 2026-10-06
 >
 > **一键验收**: `scripts\verify.bat` (cmd) / `.\scripts\verify.ps1` (PowerShell) → `RESULT=VERIFY_OK`
-> 或 `python -m embodied_ai.cli verify` (8 项聚合自检, 退出码即结论)
+> 或 `python -m embodied_ai.cli verify` (**20 项**聚合自检, 退出码即结论)
+>
+> **v0.7 主题**: 针对"全链条完成度 30-35%"的评估结论批量补齐缺口 —
+> 柔性体 (G6) / 双足 3D (G9) / 灵巧手 (G11) / 终身学习 (G12) / GUI (L7) /
+> 认证工程化 (G10) / 训练管线 (BC+PPO+SAC+Diffusion) / 真机闭环 / FOC 关机链。
+> 详见 [CHANGELOG v0.7](CHANGELOG.md#v07-2026-10-06--从图纸库到可运行闭环-缺口批量补齐)。
 
 ---
 
@@ -179,6 +184,24 @@ CI (`.github/workflows/ci.yml`) 在 Python 3.10–3.13 × ubuntu/windows 上执�
 `embodied-audit platform --root <目标板快照>` 可**离线判定**并以退出码给结论。
 输入全是文件系统，因此在 x86 Windows 开发机与 CI 上都能完整验证。
 
+### v0.7 新增模块 (缺口补齐)
+
+| 文件 | 内容 |
+|---|---|
+| [models/nn_core.py](src/embodied_ai/models/nn_core.py) | 纯 numpy 训练内核: MLP + 反向传播 + Adam/SGD + 梯度自检 (**无 torch 也能真训练**) |
+| [models/diffusion_policy.py](src/embodied_ai/models/diffusion_policy.py) | DDPM 条件扩散策略 (cosine 调度 + ε 预测 + DDIM 少步采样) |
+| [models/bc_trainer.py](src/embodied_ai/models/bc_trainer.py) | 行为克隆: 数据集 + 归一化 + 训练器 + 环境内成功率评估 |
+| [models/rl_algorithms.py](src/embodied_ai/models/rl_algorithms.py) | PPO (GAE+clip) 与 SAC (双 Q + 自动温度) |
+| [dynamics/soft_body.py](src/embodied_ai/dynamics/soft_body.py) | G6 柔性体: XPBD 布料/毛巾 + 抓取 + 打滑判据 |
+| [control/whole_body.py](src/embodied_ai/control/whole_body.py) | G9 3D 全身: 支撑多边形 + 6-DoF 腿部 IK + 接触力分配 |
+| [hardware/foc_shutdown.py](src/embodied_ai/hardware/foc_shutdown.py) | FOC + SVPWM + 电流环 + 自动关机链时序 + HIL 用例 |
+| [hardware/dexterous_hand.py](src/embodied_ai/hardware/dexterous_hand.py) | G11 灵巧手: 力闭合判据 + 4 候选选型矩阵 |
+| [simulation/real_robot_env.py](src/embodied_ai/simulation/real_robot_env.py) | 真机闭环: CAN-FD 帧编解码 + 传输层 + 安全闸门 + 延迟统计 |
+| [deploy/jetson_bench.py](src/embodied_ai/deploy/jetson_bench.py) | VLA 推理 roofline 基准 + 实测注入标定 |
+| [learning/lifelong.py](src/embodied_ai/learning/lifelong.py) | G12 终身学习: EWC + 回放 + forgetting/BWT |
+| [safety/certification.py](src/embodied_ai/safety/certification.py) | G10 认证: HAZOP + SIL/PFH/SFF + 架构约束 + V&V + RTM |
+| [gui/](src/embodied_ai/gui/) | L7 运行台: 零依赖 Web 仪表盘 + 7 个 JSON API |
+
 ### 核心资产
 
 | 文件 | 内容 |
@@ -208,6 +231,19 @@ embodied-audit nanogpt [--size vla_tiny] [--out output/nanogpt]
 # Linux on ARM 目标能力 (v0.6)
 embodied-audit platform [--root <目标板快照>] [--as-target] [--strict]
                         [--json probe.json] [--emit-units ./units]
+
+# v0.7 缺口补齐
+embodied-audit soft                        # G6 柔性体 (XPBD)
+embodied-audit wholebody [--steps 4]       # G9 双足 3D 全身
+embodied-audit train  [--algo bc|ppo|sac|diffusion] [--iters N]
+embodied-audit foc                         # FOC + SVPWM + 自动关机链
+embodied-audit hand                        # G11 灵巧手选型
+embodied-audit real   [--transport mock|socketcan|serial]
+embodied-audit bench  [--size vla_tiny] [--platform jetson_orin_nx_16gb]
+embodied-audit cert   [--md docs/cert.md]  # G10 认证证据包
+embodied-audit lifelong                    # G12 终身学习
+embodied-audit gui    [--port 8765] [--once]   # L7 运行台
+
 embodied-audit verify [--no-pytest]   # 一键全量自检, 退出码即结论
 ```
 
@@ -325,6 +361,22 @@ k = (4/3) · E* · √R*
 
 # 机会约束握力调度 (μ 不确定性)
 f_n ≥ ‖f_t‖ / (μ̂ − z · σ_μ)
+
+# v0.7 新增: 扩散策略去噪 (ε 预测)
+x_{t-1} = (x_t − (1−α_t)/√(1−ᾱ_t) · ε̂) / √α_t + σ_t z
+L = E‖ε̂(x_t, t, c) − ε‖²
+
+# v0.7 新增: XPBD 约束投影 (柔度 α̃ = compliance/h²)
+Δλ = (−C − α̃λ) / (w_i + w_j + α̃),  Δp_i = w_i Δλ ∇C
+
+# v0.7 新增: LIPM 解析推进 (不稳定系统不能用显式欧拉)
+ξ = x + v/ω (DCM),  x(t+h) = p + (x−p)cosh(ωh) + (v/ω)sinh(ωh)
+
+# v0.7 新增: EWC 持续学习惩罚
+L = L_task + λ · Σ_i F_i (θ_i − θ*_i)²,  F_i = E[(∂L/∂θ_i)²]
+
+# v0.7 新增: SIL 定量 (IEC 61508)
+PFH = Σ λ_DU · 1e-9,  λ_DU = λ(1−λ_S%)(1−DC%),  SFF = (Σλ_S+Σλ_DD)/Σλ
 ```
 
 ---
@@ -348,11 +400,27 @@ f_n ≥ ‖f_t‖ / (μ̂ − z · σ_μ)
 
 详见 [docs/future-exploration-plan.md](docs/future-exploration-plan.md)
 
-30 天快速启动:
-1. 搭建 Isaac Sim / MuJoCo 仿真环境
-2. 导入 URDF (机械臂 + 桌面 + 杯子)
-3. 实现行为克隆训练管线
-4. 第一次 Sim-to-Real 迁移尝试
+### 三个实质里程碑的当前状态 (v0.7)
+
+评估给出的优先级排序是 **(1) FOC 关节板转动 + 自动关机 <1µs → (2) Jetson Orin NX
+上跑一次 VLA 推理 → (3) 仿真策略部署到真实单关节**。v0.7 把它们各自的
+**"到货前必须先钉死"** 部分做完了, 剩下的都是必须有实物才能推进的:
+
+| 里程碑 | 已就绪 (v0.7) | 仍缺 (需实物) |
+|---|---|---|
+| (1) FOC + 自动关机 | SVPWM 伏秒平衡校验、电流环极点配置、关机链 4 段时序模型、**7 条 HIL 测试用例**、停止角→安全速度包络反解 | PCB 打样、示波器实测、继电器/离合器寿命实测 |
+| (2) Jetson VLA 推理 | 5 个 SoC 的 roofline 基准、实测注入标定系数、INT8/FP16 切换、与 50ms 闸门对齐 | 登板实测 TensorRT 引擎 (可用 `bench` 把实测值喂回) |
+| (3) Sim-to-Real | `RealRobotEnv` 走同一 `SimEnv` 接口、CAN-FD 按 DBC 编解码、安全闸门 + 延迟统计 | 真关节 + `socketcan`/`serial` 传输层的首次通电 |
+
+也就是说: **板子/电机一到, 上述三条都能在当天跑出第一个实测数**, 且实测值
+有明确的落点 (`ShutdownChain.stages[*].delay_s` / `bench_vla(measured_ms=...)`
+/ `RealRobotEnv.avg_latency_ms`), 不需要临时设计测量方案。
+
+30 天快速启动 (v0.7 后已部分完成, 标注 ✅):
+1. ✅ 仿真环境 (零依赖 reference 后端 + DR + MuJoCo/PyBullet 可选)
+2. ⬜ 导入 URDF (机械臂 + 桌面 + 杯子) — 需 MuJoCo/PyBullet 环境
+3. ✅ 行为克隆训练管线 (`models/bc_trainer.py`, 含环境内成功率验收)
+4. ✅ Sim-to-Real 迁移管线 (`simulation/real_robot_env.py`, mock 通路已跑通)
 
 ---
 

@@ -97,12 +97,56 @@ class STLImplies:
         return max(-l, r)
 
 
+@dataclass
+class STLNext:
+    """X[a] φ — 下一时刻 (延迟 a 秒后)。
+
+    ρ(X[a] φ, t) = ρ(φ, t+a)
+    文档 §robustness 早就写了该算子, 但代码缺失; v0.7 补齐。
+    """
+    arg: Any
+    a: float = 0.0
+    def robustness(self, signal, t=0, dt=0.01) -> float:
+        return _eval(self.arg, signal, t + self.a, dt)
+
+
+@dataclass
+class STLUntil:
+    """φ U[a,b] ψ — 直到: ψ 必须在 [t+a,t+b] 内某时刻成立, 且在此之前 φ 一直成立。
+
+    ρ(φ U[a,b] ψ, t) = max_{t'∈[t+a,t+b]} ( min( ρ(ψ,t'),
+                                                 min_{t''∈[t,t')} ρ(φ,t'') ) )
+    """
+    left: Any    # φ (必须持续成立)
+    right: Any   # ψ (最终必须成立)
+    a: float = 0.0
+    b: float = 0.1
+    def robustness(self, signal, t=0, dt=0.01) -> float:
+        best = -np.inf
+        t_end = _last_t(signal, t, self.b, dt)
+        for tp in _arange_steps(self.a, self.b, dt):
+            if t + tp > t_end:
+                break
+            r_psi = _eval(self.right, signal, t + tp, dt)
+            # t'' ∈ [t, t')
+            prefix = [_eval(self.left, signal, t + s, dt)
+                      for s in _arange_steps(0.0, max(tp - dt, 0.0), dt)]
+            val = min(r_psi, min(prefix) if prefix else r_psi)
+            if val > best:
+                best = val
+        return float(best) if np.isfinite(best) else 0.0
+
+
+_STL_COMPOSITE = (STLOr, STLAnd, STLGlobally, STLFinally, STLImplies, STLNot,
+                  STLNext, STLUntil)
+
+
 def _eval(formula, signal, t, dt) -> float:
     """对公式 + 信号 + 时间点求 robustness。"""
     if isinstance(formula, STLAtom):
         x = _interp(signal, t, dt)
         return formula.robustness(x)
-    elif isinstance(formula, (STLOr, STLAnd, STLGlobally, STLFinally, STLImplies, STLNot)):
+    elif isinstance(formula, _STL_COMPOSITE):
         return formula.robustness(signal, t, dt)
     else:
         raise TypeError(f"未知 STL 公式类型: {type(formula)}")
@@ -126,6 +170,14 @@ def _interp(signal: dict | np.ndarray, t: float, dt: float) -> np.ndarray:
 
 
 def _last_t(signal, t, duration, dt):
+    """时域上界。
+
+    v0.7 修: 传 ndarray (单时刻状态) 时 `signal.get` 会抛 AttributeError —
+    而 _interp 明确支持 ndarray 信号, 于是"支持两种信号格式"的承诺在 G/F/U
+    三个时序算子上是假的。ndarray 没有时间轴 ⇒ 上界就是 t+duration。
+    """
+    if not isinstance(signal, dict):
+        return t + duration
     ts = signal.get("time", [0.0])
     if ts is not None and len(ts) > 0:
         return min(t + duration, float(ts[-1]))
@@ -169,3 +221,15 @@ def force_ramp_monitor(max_rate: float = 1000.0, dt: float = 0.001) -> STLGlobal
         STLAtom("force_rate", lambda x: abs(x[0]) - max_rate * dt),
         a=0, b=0.1,
     )
+
+
+def release_only_after_stop(t_release: float = 0.016) -> STLUntil:
+    """STO 之后才允许松开抱闸: (力矩保持为零) U[0,t_release] (抱闸已闭合)。
+
+    这是 G10 认证里最容易被忽略的一条——若允许"关断后立即松闸", 机械隔离
+    尚未建立时负载可能反向拖动关节。用 Until 表达: 在抱闸闭合成立之前,
+    力矩必须持续为零。
+    """
+    torque_zero = STLAtom("torque_zero", lambda x: float(abs(x[0])) - 1e-3)
+    brake_closed = STLAtom("brake_closed", lambda x: 0.5 - float(x[1]) if len(x) > 1 else -1.0)
+    return STLUntil(torque_zero, brake_closed, a=0.0, b=t_release)

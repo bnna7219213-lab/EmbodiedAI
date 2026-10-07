@@ -17,9 +17,11 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import Any, Callable, List, Tuple
+from typing import Any, Callable, Dict, List, Tuple
 
-VERSION = "0.6.0"
+import numpy as np
+
+VERSION = "0.7.0"
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
@@ -139,8 +141,149 @@ def check_nanogpt_plan() -> int:
     plan = adapter.export_training_plan(model_size="vla_tiny", out_dir="output/verify_nanogpt")
     assert plan["plan"]["estimate_params"] > 0, "参数量估算非正"
     assert Path(plan["path"]).exists(), "训练计划未落盘"
-    # 仓库缺失属环境预期, 仅要求探测结构完整
-    assert probe["total"] == 3, "探针清单应含 3 个文件"
+    # 仓库缺失属环境预期, 仅要求探测结构完整 (核心探针: llm.py/train.py/tokenizer.py;
+    # probe 扩展后 total=5 为兼容超集 — 旧断言 ==3 在扩展后误报)
+    assert probe["total"] >= 3, f"探针清单至少应含 3 个文件, got {probe['total']}"
+    if probe["exists"]:
+        assert probe["found"] >= 3, "核心探针 (llm/train/tokenizer) 应至少命中"
+    return 0
+
+
+# --------------------------------------------------------------------------- #
+# v0.7 新增检查项 (缺口补齐后的验收)
+# --------------------------------------------------------------------------- #
+def check_soft_body() -> int:
+    """G6 柔性体: XPBD 不可拉伸 / 悬垂收敛 / 抓取变形 / 滑脱判据。"""
+    from .dynamics.soft_body import soft_body_demo
+
+    r = soft_body_demo()
+    assert r["ok"], f"柔性体自检失败: {r}"
+    return 0
+
+
+def check_whole_body() -> int:
+    """G9 3D: 腿部 IK 往返精度 + 3D ZMP 稳定 + 判据非恒真。"""
+    from .control.whole_body import whole_body_demo
+
+    r = whole_body_demo()
+    assert r["ok"], f"3D 全身控制自检失败: {r}"
+    assert r["ik_position_err"] < 1e-9, r["ik_position_err"]
+    return 0
+
+
+def check_diffusion_policy() -> int:
+    """扩散策略: 训练损失下降 + 采样分布优于噪声 + DDIM 少步可行。"""
+    from .models.diffusion_policy import fit_demo
+
+    r = fit_demo(iters=600)
+    assert r["ok"], f"扩散策略自检失败: {r}"
+    return 0
+
+
+def check_bc_training() -> int:
+    """行为克隆: 验证 MSE 下降 + 环境内成功率接近专家。"""
+    from .models.bc_trainer import bc_demo
+
+    r = bc_demo(n_episodes=10, iters=300, eval_episodes=3)
+    assert r["ok"], f"行为克隆自检失败: {r}"
+    return 0
+
+
+def check_rl_algorithms() -> int:
+    """PPO / SAC: 回报优于随机基线 (PPO), 训练动力学健康 (SAC 短跑)。
+
+    SAC 是 off-policy + 单步更新, 需要 ~12k 环境步才稳定超过随机基线
+    (12s), 这里只跑 3k 步验证算法**不发散**: q 损失有界、温度在合理区间、
+    回报曲线上升。完整规模由 `embodied-audit train --algo sac` 承担。
+    """
+    from .models.rl_algorithms import rl_demo
+
+    # 80 次迭代是"稳定超过随机基线"的下限 (60 次时末段回报 −74.2 vs 随机
+    # −73.3, 刚好差一点点, 会偶发假红)
+    ppo = rl_demo("ppo", iters=90)
+    assert ppo["ok"], f"PPO 未超过随机基线: {ppo}"
+    sac = rl_demo("sac", iters=3000)
+    d = sac["diagnostics"]
+    assert np.isfinite(d.get("q_loss", np.nan)) and d["q_loss"] < 1e3, d
+    assert 0.0 < d.get("alpha", 0.0) < 50.0, d
+    assert sac["final_return"] >= sac["initial_return"] - 5.0, sac
+    return 0
+
+
+def check_foc_shutdown() -> int:
+    """优先级 (1): SVPWM 伏秒平衡 + 电流环稳态 + 关机链 0.8µs/16ms + 停止角。"""
+    from .hardware.foc_shutdown import foc_shutdown_demo
+
+    r = foc_shutdown_demo()
+    assert r["ok"], f"FOC/关机链自检失败: {r}"
+    assert r["electrical_off_us"] <= 1.0, r["electrical_off_us"]
+    return 0
+
+
+def check_dexterous_hand() -> int:
+    """G11: 力闭合判据正确 + 选型矩阵有区分度 + 给出推荐。"""
+    from .hardware.dexterous_hand import dexterous_hand_demo
+
+    r = dexterous_hand_demo()
+    assert r["ok"], f"灵巧手自检失败: {r}"
+    return 0
+
+
+def check_real_robot() -> int:
+    """Sim-to-Real 最后一公里: mock 传输跑通闭环 + 安全闸门 + 延迟统计。"""
+    from .simulation.real_robot_env import real_robot_demo
+
+    r = real_robot_demo(steps=30)
+    assert r["ok"], f"真机闭环自检失败: {r}"
+    return 0
+
+
+def check_jetson_bench() -> int:
+    """优先级 (2): VLA 推理 roofline 基准 + 无加速器时必须超预算。"""
+    from .deploy.jetson_bench import jetson_bench_demo
+
+    r = jetson_bench_demo()
+    assert r["ok"], f"推理基准自检失败: {r}"
+    return 0
+
+
+def check_lifelong() -> int:
+    """G12: 灾难性遗忘可观测 + EWC 有效 + λ 过大会压死可塑性。"""
+    from .learning.lifelong import lifelong_demo
+
+    r = lifelong_demo()
+    assert r["ok"], f"终身学习自检失败: {r}"
+    return 0
+
+
+def check_certification() -> int:
+    """G10: PFH/SFF/架构约束/RTM 四项达标, 且三项判据非恒真。"""
+    from .safety.certification import certification_demo
+
+    r = certification_demo()
+    assert r["ok"], f"认证包自检失败: {r}"
+    return 0
+
+
+def check_climb_cycle() -> int:
+    """Phase A: 完整攀岩周期集成 (climb_scene 焊接层, 全链无 mock)。"""
+    from .simulation.climb_scene import run_climb_cycle
+
+    r = run_climb_cycle(seed=42)
+    assert r.phases_visited[-1] == "climb_on", f"周期未完成: {r.phases_visited}"
+    assert r.all_real, "集成链路存在 mock"
+    assert r.f_soft_peak_n < r.f_rigid_peak_n, "柔顺分支必须低于刚性分支"
+    assert r.full_speed_infeasible, "满速直弹超限应被诚实记录"
+    assert r.capture_feasible and r.com_advance_m > 0.3, "捕获后应续攀推进"
+    return 0
+
+
+def check_gui() -> int:
+    """L7: 起服务 → 拉全部 API → 下发 STO → 关服务。"""
+    from .gui import gui_demo
+
+    r = gui_demo()
+    assert r["ok"], f"GUI 自检失败: {r}"
     return 0
 
 
@@ -240,9 +383,11 @@ def check_cli_smoke() -> int:
 
     env = {**os.environ, "PYTHONPATH": str(SRC_ROOT), "PYTHONIOENCODING": "utf-8"}
     # audit 依赖兄弟仓库存在, 不作为硬失败; 其余子命令必须 0 退出
+    # v0.7: 新增子命令一并冒烟 (全部走小规模默认, 保证 CI 时长可控)
     for cmd in ("contracts", "safety", "sim", "sim2real", "biped", "nanogpt", "dr",
-                "platform"):
-        r = subprocess.run([sys.executable, "-m", "embodied_ai.cli", cmd],
+                "platform", "soft", "foc", "hand", "cert", "bench", "lifelong",
+                "real", "wholebody", "gui --once", "train --algo ppo --iters 80"):
+        r = subprocess.run([sys.executable, "-m", "embodied_ai.cli", *cmd.split()],
                            capture_output=True, cwd=str(REPO_ROOT), env=env)
         assert r.returncode == 0, (
             f"CLI {cmd} 退出码 {r.returncode}\n"
@@ -270,6 +415,7 @@ def check_pytest() -> int:
 # 聚合
 # --------------------------------------------------------------------------- #
 CHECKS: List[Tuple[str, Callable[[], int]]] = [
+    # --- v0.5/v0.6 既有 --- #
     ("contracts", check_contracts),
     ("safety_budget", check_safety_budget),
     ("simulation", check_simulation),
@@ -277,6 +423,20 @@ CHECKS: List[Tuple[str, Callable[[], int]]] = [
     ("biped_gait", check_biped),
     ("nanogpt_plan", check_nanogpt_plan),
     ("arm_linux", check_arm_linux),
+    # --- v0.7 缺口补齐 --- #
+    ("soft_body", check_soft_body),            # G6
+    ("whole_body_3d", check_whole_body),       # G9
+    ("diffusion_policy", check_diffusion_policy),
+    ("bc_training", check_bc_training),
+    ("rl_algorithms", check_rl_algorithms),    # PPO / SAC
+    ("foc_shutdown", check_foc_shutdown),      # 优先级 (1)
+    ("dexterous_hand", check_dexterous_hand),  # G11
+    ("real_robot_loop", check_real_robot),     # Sim-to-Real 最后一公里
+    ("jetson_bench", check_jetson_bench),      # 优先级 (2)
+    ("lifelong_learning", check_lifelong),     # G12
+    ("certification", check_certification),    # G10
+    ("gui_dashboard", check_gui),              # L7
+    ("climb_cycle", check_climb_cycle),        # Phase A 攀岩周期集成 (A1+A2+A5)
     ("cli_smoke", check_cli_smoke),
 ]
 

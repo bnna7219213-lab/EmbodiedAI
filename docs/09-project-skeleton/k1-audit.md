@@ -63,6 +63,74 @@ skeleton-plan K3 原文："models/ VLA 小模型（复用 nanoGPT 管线模式�
 >
 > 遗留（非阻塞）：VLA 训练冒烟需 torch 环境（当前 HAS_TORCH=False 仅静态验证）；formal 可达集与 reachability.IntervalSet 的完整区间融合为 K3+ 深化项。
 
+### K3 完成情况检查（2026-09-20 复核，逐项实测）
+
+| K3 验收项 | 状态 | 实测证据 |
+|---|---|---|
+| safety 形式化：STL 规约 | ✅ | STLAtom/Or/And/Not/Globally/Finally/Implies + force_limit_monitor/velocity_when_human_near（20 项测试含 STL robustness 语义） |
+| safety 形式化：区间可达集 | ✅ | IntervalSet/ReachabilityAnalyzer/SafetyEnvelope（Minkowski 和 + Euler 传播） |
+| safety 形式化：ISO 13482 运行时监控 | ✅ | ISO13482Monitor（生物力学阈值 ISO/TS 15066 + 速度限制 + 条款号标注，测试含 safe/violation 双路径） |
+| **预算闭环（创新 #4 数值化）** | ✅ | close_budget_loop: 16.00ms 实测链 → 停止角 6.97° < 30° → 可达集限位通过 → SIL2 PFH 达标 → closure_ok=True |
+| deploy: 延迟审计（NG12 吸收） | ✅ | audit_latency: 基线 29.0ms/50ms (58%) PASS；60ms 注入触发 BLOCKING（契约预算 hw_requirements 唯一真源） |
+| VLA: 结构骨架 | ✅ | VLATransformer(Pre-LN/GQA/SwiGLU) + VisionEncoder(ViT-Tiny) + ActionTokenizer + VLATrainer(AdamW/cosine/checkpoint)，对齐 nanoGPT 模式 |
+| VLA: 静态验证 | ✅ | 参数量估算 5 档消融全通过：tiny 7.12M / small 13.14M / base 18.17M / large 36.32M / no_vision 18.17M；JSON roundtrip；无 torch 时 ActionTokenizer 显式 raise（不静默吞） |
+| VLA: **训练冒烟** | ⚠️ 阻塞于环境 | 宿主 Python 无 torch（HAS_TORCH=False 实测确认）；代码路径已就绪，torch 环境就位后跑 tiny 前向 + 数步反传即可解锁 |
+| nanoGPT 代码复用 | ✅（按方案） | 模式复用而非代码复制——符合 skeleton-plan "不复制代码，按模式新建"；独立 adapter 属 K3+ 可选项 |
+| nanoGPT adapter（nanogpt.py） | ❌ 未建 | adapters/ 目前 edalab+bigdata；VLA 经其训练底座的数据/管线尚需桥接 |
+
+**K3 判定：safety 形式化（创新 #4 的核心）+ deploy 延迟审计 + VLA 静态层全部达成；VLA 训练冒烟为环境阻塞项（非代码缺口），nanoGPT adapter 为 K3+ 增项。**
+复核修复：test_ablations 断言过时（vla_small 加入后仍写死 4），已放宽为 ≥4 并补 vla_large 断言；修复后 20/20 恢复。全仓回归 45/45（K1 8 + K2 17 + K3 20），live 冒烟 LIVE_OK 复验通过。
+
+### K3+ 纵向深化（2026-09-20 执行完毕，三项遗留全部闭环）
+
+| 项 | 结果 | 实测证据 |
+|---|---|---|
+| **VLA 真训冒烟** | ✅ | 定位系统 Python 3.14（torch 2.14.1+cpu）执行 `scripts/vla_train_smoke.py`：8.53M 参数实例化，12 步训练 **loss 0.3184 → 0.0629**。过程修复两个从未被真跑暴露的 bug：① 输入形状契约（frames=[B*V,C,H,W]）② **vision_embd(384)↔n_embd(256) 缺投影桥**（结构性，vla_model 补 `vision_proj`） |
+| **nanoGPT adapter** | ✅ | `adapters/nanogpt.py`：真实探测（llm.py 25KB / 5 checkpoints / trained_config / tokenizer）、13 字段语义映射 **100% 覆盖**、训练计划导出（`embodied-audit nanogpt` CLI PASS，输出 train_plan_vla_tiny.json + 建议命令）。工程化待吸收清单：SDPA/混合精度/梯度缩放/断点续训 7 项 |
+| **飞轮→控制环闭环** | ✅ | `scripts/flywheel_control_smoke.py`：21 条遥测 → 4 项 DR → `make_controller(dr_config)` → 10 步双控制器，单步 **1.27ms < 50ms 预算**；DR 生效实证：注入控制器 `_mu_override=1.617`（遥测摩擦分布中值），基线无此参数 |
+| 兼容修复（过程中） | ✅ | 会话外演进的 CLI 已期望 NanoGPTAdapter（root=None/probe found-total-missing/export_training_plan）——补齐接口；verification.py 的探针数断言 ==3 在 probe 扩展到 5 后误报，放宽为 ≥3 且核心 3 探针命中 |
+| 全量回归 | ✅ | **55/55**（K1 8 + K2 17 + K3 20 + K3+ 10）+ `verify --no-pytest` **8/8 PASS** + audit ALL OK |
+
+### K3++ 持续化训练（2026-09-20，nanoGPT checkpoint/resume 模式移植）
+
+| 项 | 结果 | 实测证据 |
+|---|---|---|
+| VLATrainer 持久化升级 | ✅ | 对齐 nanoGPT CheckpointManager：**原子写**（tmp+os.replace 防中断写坏）+ **latest 副本**（Windows 复制模式）+ **RNG 状态**（python/torch）+ config JSON 快照 + load 自动回退 latest |
+| 训练入口 | ✅ | `scripts/vla_train_full.py`：--size/--iters/--ckpt-interval/--resume/--seed；synth_batch 保持 224px（pos_embed 契约）CPU 适配（device=cpu + 关混合精度） |
+| **vla_base 完整训练** | ✅ | 3.14 环境（torch 2.14.1+cpu）：**22.31M 参数**，60 步 **loss 0.3302→0.0962**（0.40s/step），checkpoint step 20/40/60 落盘 |
+| **--resume 断点续训** | ✅ | `--resume` 从 latest（step 60）续跑到 **step 80**，loss 衔接 0.0941（无重新下降 → 优化器/权重状态正确恢复，非重置）；产物族 step_20/40/60/80 + latest 递增 |
+| checkpoint 结构 | ✅ | 7 键：model/optimizer/iter/best_val_loss/config(vla_base n_layer=6 n_embd=384)/loss_log/rng_state |
+| 持久化测试 | ✅ | tests/test_vla_persistence.py 4 项：checkpoint 族/latest 副本/无 .tmp 残留（原子写证据）/step_80 resume 证据 |
+| 全量回归 | ✅ | **59/59**（55+4）全绿 |
+
+真数据接入点：synth_batch 替换为 dataset loader（遥测 D2→训练 D4，bigdata.py 已就绪）；best_val/loss_log 待接 val 集（当前 train-only）。
+
+### K3+++ 真实数据管线（2026-09-20，D2→D4 接通）
+
+| 项 | 结果 | 实测证据 |
+|---|---|---|
+| ReplayDataset | ✅ | `models/replay_dataset.py`：遥测 jsonl → (state, action) 自回归对（action=下一时刻实际位置），时序分割 train/val 前 80%/后 20% 不泄漏；rgb/lang 确定性零张量 + **provenance 标注**（synthetic_zero，不冒充真实） |
+| bigdata D4 导出 | ✅ | `export_training_jsonl`：provenance 头行（真实字段/合成字段/关节覆盖/批次绑定）+ 记录行 |
+| 训练入口接通 | ✅ | `vla_train_full --dataset <jsonl>`：真实 loader 替换 synth_batch（保留合成回退），val 集接 estimate_loss |
+| **端到端真训** | ✅ | 3.14 环境：120 条遥测（2 关节×60 时刻）→ vla_base 22.31M，20 步 **loss 0.0322→0.0013**，**val 0.0015（best_val_loss 有限值生效）**，loss_log 3 条记录 |
+| resume（D4 数据） | ✅ | `--resume` 从 step 30 续训（历史 loss 3 条衔接） |
+| 过程修复的 bug | ✅ | `ingest_canfd_frame` 只认 DBC 字段名（actual_current_a/temp_c），规范化名（motor_current_a/temperature_c）**静默丢失**——双命名兼容修复（规范化为准 + DBC 别名兜底）；此前 D4 数据电流字段从未进入张量 |
+| 测试 | ✅ | `tests/test_d4_pipeline.py` 5 项（provenance 头/自回归对/时序分割/真实字段进张量/双命名兼容）；全量 **64/64** 全绿 |
+
+管线现状：`遥测 ingest → export_training_jsonl → vla_train_full --dataset → resume` 全链无合成混杂（遥测电流/温度/位置真实进入张量）；rgb/lang 模态为诚实占位，真视觉/语言数据接入后 provenance 自动翻转。
+
+### K3++++ live 遥测源（2026-10-06，EdaLab data-flywheel 真跑数据进训练）
+
+| 项 | 结果 | 实测证据 |
+|---|---|---|
+| live 输出实测 | ✅ | data-flywheel `LIVE_OK`，stdout 496 字符：**汇总统计**（板 SF-MDB-0001 / 100 遥测记录 / 成功率 100% / 5050 cycles）+ DR 四分布——无逐条遥测 |
+| 解析器 | ✅ | `adapters/flywheel_live.py`：统计正则解析 + 时间戳防误匹配修复（`2026-10-06T...` 曾被 DR 正则吃掉）|
+| 诚实重采样设计 | ✅ | live 只有统计 → 以统计量为约束生成逐条遥测（温度∈[15,45] 来自 live DR、负载 scale、故障率=1-成功率），provenance=`edalab_flywheel_live_statistics` + `_stats_anchor` 锚点可追溯，不冒充逐条真机数据 |
+| **D2→D4 全链（live 源）** | ✅ | `scripts/flywheel_live_train.py`：live 调用 → 解析 → 2 关节 200 条 → export jsonl → vla_base 22.31M 真训 20 步 **loss 0.1306→0.0224，val 0.0393**，批次绑定 SF-MDB-0001 |
+| 测试 | ✅ | `tests/test_flywheel_live.py` 5 项（统计解析/DR 范围/时间戳防误配/记录数与 provenance/故障率映射）；全量 **69/69** 全绿 |
+
+飞轮现状（K 系列最终态）：**live Kotlin 引擎统计 → Python 重采样遥测 → D4 数据集 → vla 真训（val 监控 + resume）** 全链贯通；逐条真机遥测接入时仅需替换 `live_flywheel_to_records` 的数据源（flywheel 引擎未来输出 jsonl 时）。
+
 **（以下为审计时原始结论，保留作历史记录）**
 
 当前项目进展判定：骨架速度超前于实质集成——结构先行的策略本身正确（符合 K 系列节奏），但 K2 的"打通"二字名不副实，且 11 步口径已经漂移（这正是 fusion-absorption-plan P2 风险表预言的"三项目文档版本漂移"在代码层的再现）。

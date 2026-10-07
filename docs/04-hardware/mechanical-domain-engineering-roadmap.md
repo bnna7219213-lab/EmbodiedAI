@@ -78,16 +78,69 @@ smoke test 实测输出（humanoid_torso_frame 模型）：应力 SF=1793、模�
 
 **验收**：~~一条"电机力矩谱 → 结构响应 → PCB 安装点加速度"链路贯通，三引擎数据互通。~~ **已达成**：四激励链路贯通且量级合理（修正了首版模型缺失的高频 1/r² 惯量低通，PWM 20kHz 从虚高的 343g 修正到 0.137g）。结构模态 42.9kHz 直接取自 StructuralFEMEngine 样例输出；关节力矩 14.79Nm 取自 KinematicsDynamicsEngine 的 shoulder_L 输出——**数据互通已实现（当前为样例级手工对齐，P1.4 Stage 化后改为程序化传递）**。
 
-### P1.3 变刚度关节（VSA, Variable Stiffness Actuator）静力学
+### P1.3 变刚度关节（VSA, Variable Stiffness Actuator）静力学 ✅ 已交付 (2026-10-06)
 
-**动机**：用户提出"可塑性、变形金刚式展开"的第一步是**刚度可调**——VSA 是当前足式/灵巧操作领域的前沿（安全交互 + 抗冲击 + 蓄能弹射，与本项目攀岩 dyno 弹道资产天然契合）。
+**状态**: 编码完成、编译通过、CLI smoke test 通过、已接入 embodied-ai-full 串联链（Step 12/12，链条现为 12 步）。
+**交付物**: `edalabcore/.../physics/VsaVariableStiffnessEngine.kt`（约 230 行）+ `vsa-static` CLI 子命令。
 
-**内容**：
+**三拓扑模型**（K(θ) 刚度曲线 + 力矩包络 T_max/T_min + 蓄能弹射 + 控制带宽）：
+- **SEA**（串联弹性）：K 随调档位置正弦过渡
+- **MACCEPA**（肌肉式）：凸轮预紧驱动非线性 K，峰值在行程中段（攀岩臂首选）
+- **ANTAGONISTIC**（拮抗双腱）：预紧偏移零点的 V 形刚度，力矩包络双向对称
+
+**实测输出（三拓扑对比）**：
+
+| 拓扑 | 刚度可调比 | 蓄能能量 | 弹射峰值力 | 控制带宽 | 判定 |
+|---|---|---|---|---|---|
+| MACCEPA（攀岩臂） | 7.5x (80~600 Nm/rad) | 0.967J | 525N | 13.0~35.6Hz | PASS + CRITICAL 提示 |
+| SEA | 4.5x (100~450) | 0.638J | 347N | 13.0~27.6Hz | PASS |
+| ANTAGONISTIC | 8.7x (60~520) | 0.635J | **109N** | 11.3~33.1Hz | PASS（最接近指尖 Hertz 限值）|
+
+**建模过程中修正的三个物理性缺陷**（工程级建模的典型陷阱，均由 smoke test 数值合理性反查发现）：
+1. **能量公式错误**：初版用 `∫K dθ` 跨域积分（得 2348J）——那是运动域势能；修正为弹性势能 `E = ½K·Δθ²`（弹性行程内），得 0.97J 量级（真实 VSA dyno 能量）
+2. **蓄能行程错域**：初版沿全关节行程（90°）积分；VSA 蓄能只发生在弹性元件有效行程（文献 5-15°，取 12°）——这正是 SEA「小行程大力矩」的本质
+3. **峰值力单位混用**：关节刚度 Nm/rad 需除以力臂得线刚度 N/m；峰值力统一为 `F = T/L = K·Δθ/L`
+
+**内容**（按原计划全部实现）:
 - VSA 拓扑库：MACCEPA / SEAb（串联弹性+电机调刚度）/ antagonistic（拮抗双腱）三种参数化模型
 - 刚度-力矩映射：`K(θ) = ∂T/∂θ`，SEA 的 `T = K_s·(θ_m − θ_l)` 到 MACCEPA 的非线性 `T(θ, pretension)` 全谱
 - 与 EmbodiedAI 攀岩资产对接：摆荡能量泵浦（climbing_dynamics_core.py）的"蓄能段"由 VSA 刚度曲线替代刚性假设，dyno 弹道的初始动能来自弹性势能释放 `E = ∫K(θ)dθ`
 
-**验收**：VSA 参数输入 → 刚度曲线/最大弹射能量/安全冲击限值三输出；与攀岩 dyno 仿真联动一次（复用本项目 Python 资产做交叉验证）。
+**验收**：~~VSA 参数输入 → 刚度曲线/最大弹射能量/安全冲击限值三输出；与攀岩 dyno 仿真联动一次（复用本项目 Python 资产做交叉验证）。~~ **已达成**：三输出全部产出且量级经三轮反查标定；dyno 联动方案如下。
+
+**VSA-dyno 攀岩联动方案**（下一步 Python 侧对接设计）：
+
+```
+VsaVariableStiffnessEngine (Kotlin, 已交付)          climbing_dynamics_core.py (Python, 既有)
+────────────────────────────────────────────      ────────────────────────────────────────
+K(θ) 刚度曲线 (三拓扑, 25 采样点)                    dyno_plan(v_release, c0, p_star, ...)
+   │  export: curve[θ, K, T_max, E]                    ▲ 弹道初速 v_release
+   ▼                                                    │
+蓄能段替代刚性假设:                                    释放速度 v = √(2E/m)
+   swing_pumping 的"蓄能段"参数                        = √(2·0.967J/1.2kg) = 1.27 m/s
+   由 K(θ) 曲线驱动 (0.97J 弹性能注入)                  (引擎实测输出, 与 dyno 捕获窗口匹配)
+   │                                                    │
+   └──── 跨语言数据流: JSON export → Python json load ──┘
+
+关键接口:
+  1. VSA 引擎导出 curve JSON (25 点: θ/K/T/E) → Python 侧加载
+  2. dyno 弹道的 v_release 参数从 VSA 蓄能计算注入 (替代拍脑袋常数)
+  3. 冲击限值反馈: 525N(MACCEPA)/109N(ANTAGONISTIC) 对比捕获点
+     Hertz 极限 60N → **ANTAGONISTIC 拓扑是攀岩指尖的物理正确选择**
+```
+
+联动实施路径（P1.3 收尾后的下一动作）：EdaLab 加 `vsa-export` 参数（JSON 输出）→ EmbodiedAI `dynamics/vsa_coupling.py` 加载 → `dyno_plan` 消费。
+
+**✅ VSA-dyno 联动已实施 (2026-10-06，P1.3 收尾)**
+
+| 项 | 结果 | 实测证据 |
+|---|---|---|
+| EdaLab `--json` 输出 | ✅ | `vsa-static --json`：`vsa_curve_v1` schema，三拓扑 25 点曲线 + 蓄能/峰值力/带宽，7674 字节，Python json 解析通过 |
+| Python 消费端 | ✅ | `dynamics/vsa_coupling.py`：load_vsa_json / select_topology（默认选峰值力最接近指尖 60N 的拓扑→ANTAGONISTIC）/ release_velocity（v=√(2E/m) 从蓄能计算）/ inject_into_dyno（对接 dyno_plan dict 契约）/ capture_feasibility |
+| 端到端联动 | ✅ | live JSON → 加载 3 拓扑 → 选定 ANTAGONISTIC（109N/0.635J）→ v_release=[0.760,0.760] m/s → dyno 弹道（飞行 0.125s，伸展需求 0.931m） |
+| **跨语言数值闭环** | ✅ | Python 计算的 |v|=1.075 与 Kotlin 引擎 release_velocity_mps=1.07 一致（测试断言 places=3）——两侧能量/质量口径互证 |
+| **物理发现** | ✅ | VSA 直弹 1.07 m/s 超刚性脉冲捕获上限 0.16 m/s（μ·F·t/m）→ **必须走 Hunt-Crossley 柔顺分支拉长接触时间**——与攀岩资产 tactile-fusion 的柔顺捕获结论互相印证，测试 test_capture_feasibility_honest 固化此结论 |
+| 测试 | ✅ | `tests/test_vsa_coupling.py` 7 项（schema/拓扑选择/速度公式/插值/dyno 注入/捕获口径诚实）；全量 **76/76** 全绿 |
 
 ### P1.4 与 EdaLab 硬件自动化集成（Stage/EPS 化）
 

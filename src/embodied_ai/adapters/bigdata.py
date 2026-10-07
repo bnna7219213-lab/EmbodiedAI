@@ -67,15 +67,22 @@ class BigdataAdapter:
     # ------------------------------------------------------------------ #
     def ingest_canfd_frame(self, frame: Dict[str, Any], joint: str = "unknown",
                            board_serial: str = "unknown", source: str = "canfd_frame") -> TelemetryRecord:
-        """消费 DBC BO_300 JointTelemetry 帧字段 (contracts/canfd)。"""
+        """消费遥测帧 — 同时接受 DBC BO_300 字段名与规范化字段名 (双命名兼容)。
+
+        DBC 别名: actual_current_a→motor_current_a, temp_c→temperature_c
+        (修复: 此前只认 DBC 名, 规范化名静默丢失 — gen_d4_dataset 触发)
+        """
+        motor = frame.get("motor_current_a", frame.get("actual_current_a"))
+        temp = frame.get("temperature_c", frame.get("temp_c"))
         rec = TelemetryRecord(
             timestamp_s=float(frame.get("timestamp_s", time.time())),
-            joint_name=joint,
-            motor_current_a=frame.get("actual_current_a"),
-            temperature_c=frame.get("temp_c"),
+            joint_name=frame.get("joint_name", joint),
+            motor_current_a=motor,
+            temperature_c=temp,
             actual_pos_deg=frame.get("actual_pos_deg"),
             fault_events=frame.get("fault_events", []),
-            source=source, board_serial=board_serial,
+            source=frame.get("source", source),
+            board_serial=frame.get("board_serial", board_serial),
         )
         self.records.append(rec.as_dict())
         return rec
@@ -156,3 +163,36 @@ class BigdataAdapter:
             for r in self.records:
                 f.write(json.dumps(r, ensure_ascii=False) + "\n")
         return path
+
+    # ------------------------------------------------------------------ #
+    # D4 导出: 遥测 → 训练数据集文件 (replay_dataset 消费)
+    # ------------------------------------------------------------------ #
+    def export_training_jsonl(self, path: Optional[Path] = None) -> Dict[str, Any]:
+        """导出 D2 遥测为 D4 训练用 jsonl (含 provenance 头行)。
+
+        格式: 第一行 {"_schema": "d4_replay_v1", "_provenance": {...}}; 后续为记录行。
+        消费方: embodied_ai.models.replay_dataset.load_telemetry_jsonl。
+        """
+        path = Path(path) if path else self.output_dir / "training_replay_v1.jsonl"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        import json as _json
+        real_fields = [f for f in ("motor_current_a", "temperature_c", "actual_pos_deg")
+                       if any(r.get(f) is not None for r in self.records)]
+        header = {
+            "_schema": "d4_replay_v1",
+            "_provenance": {
+                "source_records": len(self.records),
+                "real_fields": real_fields,
+                "synthetic_fields": ["rgb", "lang"],
+                "joints": sorted({r.get("joint_name", "unknown") for r in self.records}),
+                "policy_binding": {
+                    "hw_rev": "SF-MDB-0001",
+                    "batch_sn": sorted({r.get("board_serial", "unknown") for r in self.records}),
+                },
+            },
+        }
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(_json.dumps(header, ensure_ascii=False) + "\n")
+            for r in self.records:
+                f.write(_json.dumps(r, ensure_ascii=False) + "\n")
+        return {"path": str(path), "n_records": len(self.records), "schema": "d4_replay_v1"}

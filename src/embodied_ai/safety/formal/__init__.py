@@ -3,12 +3,14 @@ from .budget_closure import close_budget_loop, BudgetClosureResult
 from .iso13482 import ISO13482Monitor, ISO13482Result, ISO13482Violation
 from .reachability import IntervalSet, ReachabilityAnalyzer, SafetyEnvelope
 from .stl_specs import (STLAnd, STLAtom, STLFinally, STLGlobally, STLImplies,
-                        STLNot, STLOr, force_limit_monitor, velocity_when_human_near)
+                        STLNext, STLNot, STLOr, STLUntil, force_limit_monitor,
+                        release_only_after_stop, velocity_when_human_near)
 
 __all__ = [
     "close_budget_loop", "BudgetClosureResult",
     "ISO13482Monitor", "ISO13482Result", "ISO13482Violation",
     "IntervalSet", "ReachabilityAnalyzer", "SafetyEnvelope",
     "STLAtom", "STLOr", "STLAnd", "STLNot", "STLGlobally", "STLFinally", "STLImplies",
-    "force_limit_monitor", "velocity_when_human_near",
+    "STLNext", "STLUntil",
+    "force_limit_monitor", "velocity_when_human_near", "release_only_after_stop",
 ]

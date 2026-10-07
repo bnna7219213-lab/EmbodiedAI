@@ -1,0 +1,11 @@
+{"_schema": "d4_replay_v1", "_provenance": {"source_records": 10, "real_fields": ["actual_pos_deg"], "synthetic_fields": ["rgb", "lang"], "joints": ["j1"], "policy_binding": {"hw_rev": "SF-MDB-0001", "batch_sn": ["SN-T1"]}}}
+{"timestamp_s": 0.0, "joint_name": "j1", "motor_current_a": null, "temperature_c": null, "actual_pos_deg": 0.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
+{"timestamp_s": 0.05, "joint_name": "j1", "motor_current_a": null, "temperature_c": null, "actual_pos_deg": 1.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
+{"timestamp_s": 0.1, "joint_name": "j1", "motor_current_a": null, "temperature_c": null, "actual_pos_deg": 2.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
+{"timestamp_s": 0.15000000000000002, "joint_name": "j1", "motor_current_a": null, "temperature_c": null, "actual_pos_deg": 3.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
+{"timestamp_s": 0.2, "joint_name": "j1", "motor_current_a": null, "temperature_c": null, "actual_pos_deg": 4.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
+{"timestamp_s": 0.25, "joint_name": "j1", "motor_current_a": null, "temperature_c": null, "actual_pos_deg": 5.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
+{"timestamp_s": 0.30000000000000004, "joint_name": "j1", "motor_current_a": null, "temperature_c": null, "actual_pos_deg": 6.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
+{"timestamp_s": 0.35000000000000003, "joint_name": "j1", "motor_current_a": null, "temperature_c": null, "actual_pos_deg": 7.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
+{"timestamp_s": 0.4, "joint_name": "j1", "motor_current_a": null, "temperature_c": null, "actual_pos_deg": 8.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
+{"timestamp_s": 0.45, "joint_name": "j1", "motor_current_a": null, "temperature_c": null, "actual_pos_deg": 9.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}

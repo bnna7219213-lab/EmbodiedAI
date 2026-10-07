@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 import random
+import warnings
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -292,19 +293,68 @@ def compute_mc_returns(rewards: List[float], discount: float = 0.95) -> List[flo
 # ============================================================================
 
 class DiffusionPolicy:
-    """条件扩散策略 — K2: 接口定义 + 桩实现，K3: 对接 DenoisingDiffusionProbabilisticModel。
+    """条件扩散策略 — MCTS 输出接触序列 → 连续关节/力矩轨迹 → 低层执行。
 
-    高层: MCTS 输出接触序列 → DiffusionPolicy 生成连续关节/力矩轨迹 → 低层执行。
+    v0.7: 对接 `models.diffusion_policy.DiffusionPolicyModel` (真实 DDPM 去噪)。
+    未训练时**显式**返回占位并告警, 不再伪装成"生成了轨迹" — 此前
+    `generate()` 直接返回 randn*0.1, 注释写着 "K3: 实现 DDPM", 一直没实现,
+    于是任何上层调用都拿到噪声却无从察觉。
+
+    用法:
+        p = DiffusionPolicy(obs_dim={"proprio": 8}, action_dim=3, action_horizon=8)
+        p.fit(expert_actions, cond)        # (N,H,A) 专家轨迹 + (N,obs) 条件
+        traj = p.generate(obs)
     """
 
     def __init__(self, obs_dim: Dict[str, Any] = None, action_dim: int = 12,
                  action_horizon: int = 10, n_diffusion_steps: int = 50):
-        self.obs_dim = obs_dim or {"rgb": (3, 224, 224), "tactile": (4, 64, 64), "proprio": 30}
+        self.obs_dim_cfg = obs_dim or {"rgb": (3, 224, 224), "tactile": (4, 64, 64),
+                                       "proprio": 30}
         self.action_dim = action_dim
         self.action_horizon = action_horizon
         self.n_diffusion_steps = n_diffusion_steps
+        self._model: Optional[Any] = None
         self._model_loaded = False
         self._weights_path: Optional[str] = None
+        self._warned = False
+
+    # v0.6 既有字段别名 (外部代码读 obs_dim)
+    @property
+    def obs_dim(self) -> Dict[str, Any]:
+        return self.obs_dim_cfg
+
+    @obs_dim.setter
+    def obs_dim(self, v: Dict[str, Any]) -> None:
+        self.obs_dim_cfg = v
+
+    # ------------------------------------------------------------------ #
+    def _obs_vector(self, obs: Dict[str, np.ndarray]) -> np.ndarray:
+        """把观测字典摊成一个条件向量 (优先用 proprio/state)。"""
+        for key in ("proprio", "state"):
+            if isinstance(obs, dict) and key in obs:
+                return np.asarray(obs[key], dtype=float).reshape(-1)
+        vals = [np.asarray(v, dtype=float).reshape(-1)
+                for v in obs.values() if np.asarray(v).ndim <= 2]
+        return np.concatenate(vals) if vals else np.zeros(1)
+
+    def attach(self, model) -> None:
+        """注入一个已训练的 DiffusionPolicyModel。"""
+        self._model = model
+        self._model_loaded = True
+
+    def fit(self, expert_actions: np.ndarray, cond: np.ndarray,
+            iters: int = 1200, **kw):
+        """训练内部 DDPM (返回 TrainStats)。"""
+        from ..models.diffusion_policy import DiffusionPolicyModel
+
+        c = np.atleast_2d(np.asarray(cond, dtype=float))
+        self._model = DiffusionPolicyModel(
+            obs_dim=int(c.shape[1]), action_dim=self.action_dim,
+            action_horizon=self.action_horizon,
+            n_diffusion_steps=self.n_diffusion_steps, **kw)
+        stats = self._model.fit(expert_actions, c, iters=iters)
+        self._model_loaded = True
+        return stats
 
     @classmethod
     def load(cls, path: str) -> "DiffusionPolicy":
@@ -318,15 +368,24 @@ class DiffusionPolicy:
         self._weights_path = path
         self._model_loaded = False
 
-    def generate(self, obs: Dict[str, np.ndarray], contact_sequence: List[ContactAction] = None) -> np.ndarray:
-        """生成关节力矩/位置轨迹 (T × action_dim)。
+    # ------------------------------------------------------------------ #
+    def generate(self, obs: Dict[str, np.ndarray],
+                 contact_sequence: List[ContactAction] = None) -> np.ndarray:
+        """生成关节力矩/位置轨迹 (T × action_dim)。"""
+        if self._model is not None:
+            cond = self._obs_vector(obs)
+            traj = self._model.sample(cond, deterministic=True)[0]
+            if contact_sequence:
+                traj[:, :3] += contact_sequence[0].contact_position[:3]
+            return np.asarray(traj, dtype=np.float32)
 
-        K3: 实现 DDPM/Score-Based 去噪过程。
-        K2: 返回常数 + 噪声占位。
-        """
+        # 未训练: 明示占位 (上层应看到这条告警而不是拿到噪声当结果)
+        if not self._warned:
+            warnings.warn("DiffusionPolicy 未训练 (无 _model): generate() 返回噪声占位, "
+                          "请先调用 fit(...) 或 attach(model)", RuntimeWarning)
+            self._warned = True
         traj = np.random.randn(self.action_horizon, self.action_dim).astype(np.float32) * 0.1
         if contact_sequence:
-            # 末端姿态对齐到第一个接触点
             traj[:, :3] += contact_sequence[0].contact_position[:3]
         return traj
 
