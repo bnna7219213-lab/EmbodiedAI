@@ -42,7 +42,12 @@ if HAS_TORCH:
             self.num_views = num_views
             self.n_patches = (img_size // patch_size) ** 2
             self.patch_embed = PatchEmbed(img_size, patch_size, in_ch, embed_dim)
-            self.pos_embed = nn.Parameter(torch.zeros(1, self.n_patches, embed_dim) * 0.02)
+            # C1 修复 (2026-10-08): zeros → randn。
+            #   原 `torch.zeros(...) * 0.02` **恒等于全零** (0×0.02=0), 本意是
+            #   "标准差 0.02 的小随机初始化"。后果: 视觉位置编码全零 →
+            #   **patch 的空间位置信息完全丢失** (ViT 靠 pos_embed 知道每个
+            #   patch 在图像哪里), 且训练/推理都不会报错 — 又一个静默错误。
+            self.pos_embed = nn.Parameter(torch.randn(1, self.n_patches, embed_dim) * 0.02)
             self.view_embed = nn.Embedding(num_views, embed_dim) if num_views > 0 else None
             encoder_layer = nn.TransformerEncoderLayer(
                 d_model=embed_dim, nhead=n_heads, dim_feedforward=embed_dim * 4,

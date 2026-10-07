@@ -54,6 +54,11 @@ class ClimbingState:
     stability_margin: float = 1.0      # 当前平衡裕量 (接触多边形)
     timestep: int = 0
     terminal: bool = False
+    # L3 (2026-10-08): 滑脱通道。原模型只有"接触越多越稳"的单调递增,
+    # **没有失稳路径** (评估 §3.6) — 规划因此学不到"哪些抓法会滑"。
+    # 摩擦系数 (可由 DR 注入或岩点几何覆盖, 默认 0.8 = 攀岩接触典型值)
+    hold_mu: float = 0.8
+    slip: bool = False                 # 本步是否发生滑脱 (摩擦锥判据)
 
     def __hash__(self):
         return hash((tuple(self.ee_position.round(3)), self.timestep))
@@ -127,9 +132,40 @@ class ClimbingMCTS:
         self.physics_fn = physics_fn or self._default_physics
         self.reward_fn = reward_fn or self._default_reward
         self.root: Optional[MCTSNode] = None
+        # L3 修复 (2026-10-08): goal_fn 此前**收参不用** — 终局判定完全由
+        # _default_physics 的硬编码条件 (timestep>=8 or stability>0.9) 决定,
+        # 即"规划目标"与传入的 goal_fn 无关 (评估 §3.6 记为"决策空转")。
+        # 现在真实保存并在终局判定中消费。
+        self.goal_fn: Optional[Callable] = None
+        self.goal_reached: bool = False    # 本次 search 是否达成过目标 (可观测)
+
+    def _is_goal(self, state: ClimbingState) -> bool:
+        """L3: 终局判定 = 物理终态 OR 传入的目标函数达成。
+
+        goal_fn 抛异常时按"未达成"处理 (不中断搜索) — 规划器不应因用户
+        目标函数的一个边缘输入而崩溃。
+        """
+        if state.terminal:
+            return True          # 物理终态: 不置 goal_reached (语义区分)
+        if self.goal_fn is None:
+            return False
+        try:
+            gf = bool(self.goal_fn(state))
+        except Exception:      # noqa: BLE001 — 目标函数异常按未达成处理
+            return False
+        if gf:
+            # 仅当**目标函数**达成才置位 — 物理终态不算"达成目标",
+            # 否则 goal_reached 会恒真, 失去可观测价值。
+            self.goal_reached = True
+        return gf
 
     def search(self, initial_state: ClimbingState, goal_fn: Callable) -> List[ContactAction]:
-        """入口: 给定初始状态 + 目标函数，返回最优接触序列。"""
+        """入口: 给定初始状态 + 目标函数，返回最优接触序列。
+
+        L3: goal_fn 真实生效 — 达成目标即终局, 并记 self.goal_reached。
+        """
+        self.goal_fn = goal_fn
+        self.goal_reached = False
         actions = self._generate_candidate_actions(initial_state)
         self.root = MCTSNode(state=initial_state, untried_actions=actions.copy())
 
@@ -164,6 +200,11 @@ class ClimbingMCTS:
             return node
         action = node.untried_actions.pop(random.randrange(len(node.untried_actions)))
         next_state = self.physics_fn(node.state, action)
+        # L3: 达成目标 → 标记终局 (此前 goal_fn 完全不参与, 规划与目标脱节)
+        if self._is_goal(next_state):
+            next_state.terminal = True
+            # 注: goal_reached 的置位**只**在 _is_goal 内 (仅 goal_fn 为真时),
+            # 此处不置 — 否则物理终态会被误记成"达成目标"。
         child = MCTSNode(
             state=next_state,
             parent=node,
@@ -179,13 +220,20 @@ class ClimbingMCTS:
         total_reward = 0.0
         discount = 1.0
         for _ in range(self.rollout_depth):
-            if state.terminal:
+            # L3: 终局判定改为 _is_goal (含 goal_fn), 而非只读 state.terminal
+            if self._is_goal(state):
                 break
             actions = self._generate_candidate_actions(state)
             if not actions:
                 break
             action = random.choice(actions)
             state = self.physics_fn(state, action)
+            if self._is_goal(state):
+                state.terminal = True
+                # 同上: 不在此置 goal_reached (避免物理终态误记为目标达成)
+                # 达成终局仍要计入这一步的奖励, 再退出
+                total_reward += discount * self.reward_fn(state)
+                break
             reward = self.reward_fn(state)
             total_reward += discount * reward
             discount *= self.discount
@@ -229,11 +277,31 @@ class ClimbingMCTS:
     # ------------------------------------------------------------------ #
 
     def _default_physics(self, state: ClimbingState, action: ContactAction) -> ClimbingState:
-        """默认物理: 末端移动到力作用力接触点位置，步数 +1。"""
+        """默认物理: 末端移动到接触点, 步数 +1, **并经摩擦锥判滑脱**。
+
+        L3 (2026-10-08) 两处修复:
+          1. **DR override 真实接入**: dr_override() 会设 `self._mu_override` /
+             `self._k_override`, 但本函数 (唯一的物理步进点) 此前**从不读取**
+             → "制造容差 → DR → MCTS 物理"的飞轮闭环是断的。现真实消费 μ。
+          2. **引入失稳通道**: 原 `stability = min(1, n*0.3+0.1)` 单调不减,
+             规划学不到"哪些抓法会滑"。现用摩擦锥判据 ‖f_t‖ ≤ μ·f_n:
+             切向需求超摩擦极限 → 滑脱 → 稳定性下修 (可失稳)。
+        """
         new_ee = action.contact_position.copy()
         new_contacts = state.contacts_held + [action]
-        # 稳定性裕量递减 (接触越多越稳越多但达到饱和)
-        stability = min(1.0, len(new_contacts) * 0.3 + 0.1)
+
+        # (1) μ 优先级: DR 注入 > 本步岩点几何 > 默认 0.8
+        mu = float(getattr(self, "_mu_override", None) or state.hold_mu or 0.8)
+        # 切向需求按抓取型估计: power 包络最稳, pinch 对捏最易滑
+        tangent_ratio = {"power": 0.35, "pinch": 0.70,
+                         "hook": 0.50}.get(action.grasp_type, 0.45)
+        f_n = max(float(action.force_n), 1e-6)
+        f_t = tangent_ratio * f_n
+        slip = bool(f_t > mu * f_n)          # 摩擦锥判据
+
+        # (2) 稳定性: 滑脱则下修 (失稳通道), 否则沿用原饱和式
+        base = min(1.0, len(new_contacts) * 0.3 + 0.1)
+        stability = max(0.0, base - 0.25) if slip else base
         terminal = state.timestep >= 8 or stability > 0.9
         return ClimbingState(
             ee_position=new_ee,
@@ -243,13 +311,39 @@ class ClimbingMCTS:
             stability_margin=stability,
             timestep=state.timestep + 1,
             terminal=terminal,
+            hold_mu=mu,
+            slip=slip,
         )
 
     def _default_reward(self, state: ClimbingState) -> float:
-        """默认奖励: 稳定性裕量 + 终态额外奖励。"""
-        r = state.stability_margin
+        """L3 (2026-10-08): 多分量奖励 — 与状态转移**不同源**。
+
+        原实现 `r = stability_margin` (+终态 2.0), 而 stability_margin 正是
+        `_default_physics` 的产出 → **奖励与状态转移同源**, MCTS 学不到任何
+        物理之外的信息 (评估 §3.6 "奖励与状态转移同源")。
+
+        现引入与转移不同源的分量:
+          + 稳定性裕量      (主体, 保持原量级)
+          + CWC 摩擦锥余量  (μ 越高可承受切向越大 → 安全余量)
+          - 滑脱惩罚        (失稳通道的可学习信号)
+          - 能耗惩罚        (接触力总量, 与位移无关的代价)
+          - 路径代价        (步数, 抑制无意义徘徊)
+        """
+        r = float(state.stability_margin)
+        # CWC (Contact Wrench Cone) 摩擦锥余量: 以 0.6 为基准, μ 越高余量越大
+        r += 0.5 * max(0.0, float(state.hold_mu) - 0.6)
+        # 滑脱惩罚
+        if state.slip:
+            r -= 1.0
+        # 能耗: 接触力总量 (越大越耗能)
+        forces = [float(c.force_n) for c in state.contacts_held]
+        if forces:
+            r -= 0.01 * sum(forces)
+        # 路径代价: 抑制无意义徘徊
+        r -= 0.05 * float(state.timestep)
+        # 终态: 达成且稳定才给完成奖励 (沿用原口径)
         if state.terminal and state.stability_margin > 0.7:
-            r += 2.0  # 任务完成奖励
+            r += 2.0
         return r
 
     # ------------------------------------------------------------------ #

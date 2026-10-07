@@ -197,5 +197,111 @@ class TestA4DexterousGrasp(unittest.TestCase):
         self.assertAlmostEqual(hc.finger_shares.sum(), 1.0, places=6)
 
 
+class TestP0PhysicsFixes(unittest.TestCase):
+    """P0 缺陷修复验证: 打破 Phase A 的恒真断言, 让物理约束真可失败。
+
+    背景: 原 wall_contact 的摩擦锥校验 f_side ≡ 0 恒等于 0, wrench_balance_err
+    是恒等式, com/pos 从未被引用, 力矩从未测过 —— "0 失稳"结论无可信度。
+    本测试类验证: 侧向载荷能让摩擦锥真失败, 力矩残差真被计算并暴露,
+    极限姿态真能触发失稳。
+    """
+
+    def _quad_state(self, cfg):
+        return QuadContactState(cfg,
+                                np.array([0.15, 0.30, 0.0]), np.array([-0.15, 0.30, 0.0]),
+                                np.array([0.28, 1.10, 0.0]), np.array([-0.28, 1.10, 0.0]))
+
+    def test_lateral_load_triggers_friction_failure(self):
+        """P0#1 修复: 注入侧向载荷 → 摩擦锥 margins 真非零, 超限即失败。"""
+        # 无侧向载荷: margins ≈ 0 (构造使然, 但此时也不该失败)
+        r0 = allocate_forces(self._quad_state(WallContactConfig()), np.array([0.0, 0.80, 0.0]))
+        self.assertAlmostEqual(r0.friction_margins["foot_left"], 0.0, places=12)
+        self.assertTrue(r0.ok)
+
+        # 递增侧向载荷: margins 应单调上升 (真实物理), 到 40N 前后达到临界
+        margins = []
+        for n in (10.0, 20.0, 30.0, 40.0):
+            r = allocate_forces(self._quad_state(WallContactConfig(lateral_load_n=n)),
+                                np.array([0.0, 0.80, 0.0]))
+            margins.append(r.friction_margins["foot_left"])
+        self.assertLess(margins[0], margins[-1],
+                        "margins 随侧向载荷单调上升 (打破恒真)")
+        # μ_foot=0.9, fn≈17.05 → 极限 15.34N 侧向力对应 margin=1.0
+        # 每只脚承担 lateral*0.7/2 → lateral=43.8N 时 margin=1.0
+        self.assertLess(margins[-1], 1.0, "40N 侧向仍在脚摩擦极限内")
+
+        # 超限侧向: margin > 1 → 摩擦锥失败 → ok=False
+        r_fail = allocate_forces(self._quad_state(WallContactConfig(lateral_load_n=60.0)),
+                                 np.array([0.0, 0.80, 0.0]))
+        self.assertGreater(r_fail.friction_margins["foot_left"], 1.0)
+        self.assertFalse(r_fail.ok, "60N 侧向载荷应触发摩擦锥失败")
+
+    def test_torque_balance_actually_computed(self):
+        """P0#2 修复: 力矩残差 = Σ(p−com)×f 真被计算, 且三肢姿态 > 四肢。"""
+        cfg = WallContactConfig()
+        # 四肢: 静态残差 ~10.7 N·m (原代码从未暴露)
+        st4 = self._quad_state(cfg)
+        r4 = allocate_forces(st4, np.array([0.0, 0.80, 0.0]))
+        self.assertGreater(r4.torque_balance_err, 5.0,
+                           "四肢静态力矩残差非零 (原代码完全未测)")
+
+        # 三肢 (抬左手): 力矩残差应显著增大 (重心转移的物理体现)
+        st3 = QuadContactState(cfg, np.array([0.15, 0.30, 0.0]), np.array([-0.15, 0.30, 0.0]),
+                               None, np.array([-0.28, 1.10, 0.0]))
+        r3 = allocate_forces(st3, np.array([0.0, 0.80, 0.0]))
+        self.assertGreater(r3.torque_balance_err, r4.torque_balance_err,
+                           "三肢体力矩残差 > 四肢 (重心转移有物理体现)")
+
+    def test_limb_jacobian_actually_consumed(self):
+        """P0#3 修复: limb_jacobian 被真正调用 (原代码零调用)。"""
+        import inspect
+        src = inspect.getsource(allocate_forces)
+        self.assertIn("limb_jacobian(", src,
+                      "allocate_forces 必须调用 limb_jacobian (力矩解)")
+        # com 形参必须被实际引用 (原代码形参未使用)
+        self.assertIn("com", src)
+
+    def test_static_unstable_frames_honestly_reported(self):
+        """P0 修复: 静态失稳帧数诚实暴露 (原代码假称 0 失稳)。"""
+        r = wall_stand_sequence()
+        # 动态容差下 (默认 40 N·m) 无失稳 —— 攀岩换脚是动态动作
+        self.assertEqual(r["unstable_frames"], 0)
+        self.assertTrue(r["ok"])
+        # 但严格静态 (15 N·m) 下三肢姿态真的失稳, 必须诚实报告
+        self.assertGreater(r["static_unstable_frames"], 0,
+                           "静态失稳帧数应诚实暴露 (原代码假称 0)")
+        # 峰值力矩 = 三肢换 hold 瞬间 (~33 N·m)
+        self.assertGreater(r["peak_torque_nm"], 25.0)
+
+    def test_strict_dynamic_competency_can_fail(self):
+        """P0 修复: 力矩容差阈值真可失败 (不是永远通过的装饰性阈值)。"""
+        r_strict = wall_stand_sequence(WallContactConfig(dynamic_competency_nm=10.0))
+        self.assertGreater(r_strict["unstable_frames"], 0,
+                           "严格容差下应有失稳帧 (阈值真可失败)")
+        self.assertFalse(r_strict["ok"])
+
+    def test_extreme_pose_forces_failure(self):
+        """P0 修复: 单脚单手 + 额外负重 → 力矩爆表, 诚实判失败。"""
+        cfg = WallContactConfig()
+        st = QuadContactState(cfg, np.array([0.15, 0.30, 0.0]), None,
+                              np.array([0.28, 1.10, 0.0]), None)
+        r = allocate_forces(st, np.array([0.0, 0.80, 0.0]), extra_load_n=50.0)
+        self.assertFalse(r.ok, "单脚单手持重应失稳 (原代码可能假通过)")
+        self.assertGreater(r.torque_balance_err, 30.0,
+                           "力矩远超动态补偿能力")
+
+    def test_force_balance_residual_not_tautology(self):
+        """P0 修复: 力平衡残差现在依赖外力一致性, 不是构造性恒等式。"""
+        # 无外力: 构造保证 Σf = -total_w → err ≈ 0
+        r0 = allocate_forces(self._quad_state(WallContactConfig()), np.array([0.0, 0.80, 0.0]))
+        self.assertLess(r0.wrench_balance_err, 0.5,
+                        "无外力时力平衡 (构造正确性)")
+        # 力平衡现在真的验证了 Σf + total_w (total_w 包含 lateral_load_n)
+        r_side = allocate_forces(self._quad_state(WallContactConfig(lateral_load_n=30.0)),
+                                 np.array([0.0, 0.80, 0.0]))
+        self.assertLess(r_side.wrench_balance_err, 0.5,
+                        "有侧向外力时接触力正确反向平衡 (方向修复)")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

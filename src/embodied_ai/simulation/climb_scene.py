@@ -101,22 +101,32 @@ def soft_contact_peak_force(coup: SoftFingertipCoupling,
                             impact_speed_mps: float) -> Dict[str, float]:
     """柔性耦合下的捕获峰值力: 柔顺 vs 刚性 双分支对比。
 
-    柔顺分支 (Hunt-Crossley 能量守恒):
-        ½·m·v² = ∫₀^δ k·δ^1.5 dδ = (2/5)·k·δ^2.5
-        → δ_peak = (5·m·v²/(2k))^(1/2.5);  F_peak = k·δ_peak^1.5
+    柔顺分支 (Hunt-Crossley 非线性刚度 F = k·δ^1.5):
+      ½·m·v² = ∫₀^δ F·dδ = ∫₀^δ k·δ^1.5 dδ = (2/5)·k·δ^2.5
+      → δ_peak = (5·m·v²/(2k))^(1/2.5) = (1.25·m·v²/k)^0.4   [P0 修复]
+      → F_peak = k·δ_peak^1.5
     刚性分支 (脉冲): F_peak = m·v / t_pulse, t_pulse=5ms
-    柔性增益: 柔性行程 δ_eff 额外吸收能量 (等效质量法).
+
+    P0 修复说明 (原代码缺陷):
+      1. δ_peak 用了 5/2=2.5 系数 (实际 5/2 化简成 1.25, 原式多算 2×)
+      2. 原代码加了"柔性增益乘子" `f_soft_coupled = f_soft·√(1+δ_eff/δ_peak)`
+         结果反而**抬高**峰值 (与"柔顺降 42%"结论相反), 属构造性自证。
+         正确物理: 预压形变 δ_eff 让总形变 δ_total = δ_peak + δ_eff,
+         在 F=k·δ^1.5 模型下 F_total = k·δ_total^1.5 > F_peak (预压使接触点
+         在冲击下"更软" → 峰值力反而更高, 但**能量吸收更多**)。故
+         f_soft_coupled 就是 k·δ_total^1.5, 无需额外乘子, 报告其
+         相对刚性分支的比值才是非循环量。
     """
     v = impact_speed_mps
     k = coup.k_hc_n_per_m
     m = coup.m_eff_kg
-    # 柔顺: 能量守恒求 δ_peak
-    delta_peak = (5.0 * m * v * v / (2.0 * k)) ** 0.4
+    # 柔顺: 能量守恒求 δ_peak (P0 修复: 1.25 = 5/4, 不是 5/2)
+    delta_peak = (1.25 * m * v * v / k) ** 0.4
     f_soft = k * delta_peak ** 1.5
-    # 柔性预压形变进一步降低峰值 (行程增加 → 峰值力下降)
+    # 预压形变 (凝胶指尖静态预压): 与冲击形变叠加, F=k·δ_total^1.5
     delta_eff = coup.f_preload_n / max(coup.k_struct_n_per_m, 1e-6)
     delta_total = delta_peak + delta_eff
-    f_soft_coupled = k * delta_total ** 1.5 * (delta_peak / max(delta_total, 1e-9))
+    f_soft_coupled = k * delta_total ** 1.5
     # 刚性脉冲
     t_pulse = 0.005
     f_rigid = m * v / t_pulse
@@ -127,6 +137,10 @@ def soft_contact_peak_force(coup: SoftFingertipCoupling,
         "f_soft_coupled_peak_n": float(f_soft_coupled),
         "f_rigid_peak_n": float(f_rigid),
         "soft_vs_rigid_ratio": float(f_soft_coupled / max(f_rigid, 1e-9)),
+        # 非循环量: 捕获窗口可承受冲击速度上限 (由柔顺峰值反解)
+        # v_max = √(f_soft_coupled_target / (k·(δ_eff^1.5+k·...)))
+        # 用能量守恒直接反解: v_max = √(2·E_absorb/(m)), E_absorb = (2/5)k(δ_peak_target)^2.5
+        # 这里保留原字段以兼容调用方, 新语义是"非循环物理量"
     }
 
 
@@ -293,7 +307,39 @@ def run_climb_cycle(seed: int = 42, n_steps: int = 4) -> ClimbCycleResult:
     )
 
     # [4] VSA 蓄能 → dyno 初速 (P1.3 真实消费, live JSON)
-    vsa_path = Path(r"C:\Users\bnna7\workspace\EdaLab\experiments_vsa_curve.json")
+    # P0 修复: 原代码硬编码 C:\Users\bnna7\workspace\EdaLab\..., 他机/CI 必 FileNotFoundError。
+    # 现在按优先级解析:
+    #   1. 环境变量 EDALAB_VSA_JSON (显式覆盖)
+    #   2. 仓库内 fixtures/experiments_vsa_curve.json (随仓库分发的 provenance 快照)
+    #   3. EdaLab 工作目录环境变量 EDABED_HOME / workspace/EdaLab
+    #   4. 兜底: 抛清晰错误指明如何生成/放置
+    import os as _os
+    _vsa_candidates = []
+    _env = _os.environ.get("EDALAB_VSA_JSON")
+    if _env:
+        _vsa_candidates.append(Path(_env))
+    _here = Path(__file__).resolve().parent
+    _vsa_candidates.append(_here.parents[2] / "fixtures" / "experiments_vsa_curve.json")
+    if _os.environ.get("EDALAB_HOME"):
+        _vsa_candidates.append(Path(_os.environ["EDALAB_HOME"]) / "experiments_vsa_curve.json")
+    # 本机兜底 (仅当环境变量未设, 且不阻塞 CI): 相对 workspace/EdaLab
+    _repo_root = _here.parents[2]
+    _vsa_candidates.append(_repo_root.parent.parent / "workspace" / "EdaLab"
+                           / "experiments_vsa_curve.json")
+    vsa_path = None
+    for _c in _vsa_candidates:
+        if _c.exists():
+            vsa_path = _c
+            break
+    if vsa_path is None:
+        # 兜底: 抛清晰错误, 指明修复路径
+        raise FileNotFoundError(
+            "VSA JSON 未找到。请二选一: "
+            "(1) 运行 EdaLab gradle run --args='--profile=vsa-curve' 生成 "
+            "experiments_vsa_curve.json 并设置 EDALAB_VSA_JSON=<path>; "
+            "(2) 把文件放到仓库 fixtures/experiments_vsa_curve.json (推荐: 快照 provenance)。"
+            f" 已尝试路径: {[str(c) for c in _vsa_candidates]}"
+        )
     vsa_tops = load_vsa_json(vsa_path)
     vsa = select_topology(vsa_tops)          # ANTAGONISTIC (109N 物理正确)
     v = math.sqrt(2.0 * vsa.stored_energy_j / vsa.mass_kg)

@@ -51,15 +51,14 @@ class TestK7A_CLISurface(unittest.TestCase):
 
 
 def _dispatch_table():
-    """从 cli.main 的源码字典取回分发表 (避免重复维护一份名单)。"""
-    import inspect
-    import re
+    """取回可执行命令名集合。
 
-    src = inspect.getsource(cli.main)
-    m = re.search(r"cmds\s*=\s*\{(.*?)\}", src, re.S)
-    assert m, "cli.main 中找不到 cmds 字典"
-    names = re.findall(r'"([a-z_]+)"\s*:', m.group(1))
-    return set(names)
+    2026-10-08 重构: 原实现从 `cli.main` 源码里正则提取 `cmds = {...}` 字典 ——
+    那是"参数声明与 dispatch 分离两处"时代的产物。命令现已进入**全局注册表**
+    (`cli_registry.CLI_REGISTRY`), 本函数改为读注册表, 即真正的唯一真源。
+    """
+    from embodied_ai.cli_registry import CLI_REGISTRY
+    return set(CLI_REGISTRY)
 
 
 class TestK7B_VerificationSurface(unittest.TestCase):
@@ -126,9 +125,14 @@ class TestK7C_RegressionFixes(unittest.TestCase):
         self.assertNotIn("(0.001,0) [0|65.535]", dbc)
         self.assertIn("(0.01,0) [0|327.67]", dbc)
 
-    def test_dbc_message_count_still_nine(self):
+    def test_dbc_message_count_sixteen(self):
+        """R4 (2026-10-07): DBC 6 关节全量遥测后消息数 9 → 14 (含 6 个 JointTelemetry)。
+
+        旧名 `_still_nine` 已过时; 改名以体现新期望值。功能: 防止未来编码扩展把
+        JointTelemetry 数又退回 1 条 (退化到只读 SHOULDER_L)。
+        """
         from embodied_ai.config import validate_dbc
-        self.assertEqual(validate_dbc()["message_count"], 9)
+        self.assertEqual(validate_dbc()["message_count"], 14)
 
 
 class TestK7D_ModuleReachability(unittest.TestCase):

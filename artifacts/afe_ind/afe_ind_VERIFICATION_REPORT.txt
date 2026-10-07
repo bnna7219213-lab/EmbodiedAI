@@ -1,0 +1,6 @@
+=== EDA-AFE-IND 验证报告 ===
+DC 收敛=true  AC 收敛=true  瞬态=收敛
+总增益≈1046.83×（60.40dB），带宽 0Hz~10.60kHz
+输入参考噪声(27℃,1Hz)：  输出噪声密度 = 3.794e-06 V/√Hz
+导出：SVG/SPICE/C/PCB；PCB 65 元件
+DRC：380 违规

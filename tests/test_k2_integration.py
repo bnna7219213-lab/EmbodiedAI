@@ -125,21 +125,52 @@ class TestK2D_MCTS(unittest.TestCase):
 
 
 class TestK3_BudgetClosure(unittest.TestCase):
-    """K3: safety_budget 实测链 ↔ 形式化闭环。"""
+    """K3: safety_budget 实测链 ↔ 形式化闭环。
 
-    def test_close_budget_loop(self):
+    P0 修复后: 原代码 `t=min(t_budget,t_stop)` 掩盖"停不下来", 假判 PASS。
+    修复后诚实暴露: t_stop > t_budget 时返回 +inf, closure_ok=False。
+    测试按新物理断言 — 不再验证"停不下来也能通过"的错误结论。
+    """
+
+    def test_close_budget_loop_honest_fail_when_cannot_stop(self):
+        """8 rad/s 时 t_stop=0.16s >> t_budget=0.016s → 停不下来 → FAIL。"""
         r = close_budget_loop(joint_speed_rad_s=8.0)
         self.assertAlmostEqual(r.total_break_ms, 16.0, places=2)
-        self.assertTrue(r.stop_angle_ok, f"停止角 {r.stop_angle_deg}° 应 < 30°")
-        self.assertTrue(r.reachable_set_ok)
+        # 完全停止角 ω²/2α = 64/100 = 0.64 rad = 36.67° > 30° 阈值
+        self.assertFalse(r.stopped_within_budget, "8rad/s 时 t_stop=0.16s > 0.016s, 应报停不下来")
+        self.assertEqual(r.stop_angle_deg, float("inf"), "停不下来时应返回 +inf (原代码用 min 掩盖)")
+        self.assertFalse(r.stop_angle_ok, "stop_angle=inf > 30° 应判 FAIL")
+        self.assertFalse(r.reachable_set_ok, "停不下来时可达集超限位应 FAIL")
+        self.assertFalse(r.closure_ok, "整体闭环应 FAIL")
+        # SIL2 判定仍独立通过 (PFH < target)
         self.assertTrue(r.sil2_ok)
-        self.assertTrue(r.closure_ok)
 
-    def test_stop_angle_scales_with_speed(self):
+    def test_stop_angle_stops_within_budget_for_slow_speed(self):
+        """低速 (0.5 rad/s, t_stop=0.01s < t_budget=0.016s) 时停止角有限且 < 30°。"""
         from embodied_ai.safety.formal.budget_closure import stop_angle_from_budget
-        slow = stop_angle_from_budget(2.0)
-        fast = stop_angle_from_budget(8.0)
-        self.assertGreater(fast, slow, "速度越大停止角越大")
+        import numpy as np
+        slow = stop_angle_from_budget(0.5)  # t_stop = 0.5/50 = 0.01s < 0.016s
+        self.assertLess(slow, 30.0, "低速应在预算内停下, 停止角 < 30°")
+        self.assertTrue(np.isfinite(slow), "预算内停下时停止角应为有限值")
+
+    def test_stop_angle_returns_inf_when_cannot_stop(self):
+        """t_stop > t_budget 时返回 +inf (诚实 FAIL, 不掩盖)。"""
+        from embodied_ai.safety.formal.budget_closure import stop_angle_from_budget
+        import numpy as np
+        for speed in [2.0, 4.0, 8.0, 16.0]:  # 都 > α·t_budget = 50*0.016 = 0.8 rad/s
+            v = stop_angle_from_budget(speed)
+            self.assertEqual(v, float("inf"),
+                             f"{speed} rad/s 时 t_stop={speed/50:.3f}s > 0.016s, 应返 inf")
+
+    def test_stop_angle_monotonic_within_budget(self):
+        """预算内停下时, 停止角随速度单调递增。"""
+        from embodied_ai.safety.formal.budget_closure import stop_angle_from_budget
+        # 都在预算内 (t_stop = v/50 ≤ 0.016 → v ≤ 0.8 rad/s)
+        v1 = stop_angle_from_budget(0.2)
+        v2 = stop_angle_from_budget(0.5)
+        v3 = stop_angle_from_budget(0.8)
+        self.assertLess(v1, v2, "速度越大停止角越大")
+        self.assertLess(v2, v3, "速度越大停止角越大")
 
 
 class TestK3_DeployLatency(unittest.TestCase):

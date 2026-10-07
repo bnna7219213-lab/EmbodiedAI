@@ -25,7 +25,9 @@ class VsaCurvePoint:
     theta_deg: float
     k_nm_per_rad: float
     torque_max_nm: float
-    energy_j: float
+    energy_j: float                        # 从行程边界(-range/2)起的累计 ∫K dθ — 曲线形状用, 不可当弹性能
+    energy_from_origin_j: float = 0.0      # 相对平衡位 θ=0 的 ½Kθ² (θ 已按 elastic_travel 钳位) — v1.1+
+    torque_min_nm: float = 0.0             # v1.1+ 新增: 与 torque_max 对称的包络下界
 
 
 @dataclass
@@ -61,12 +63,32 @@ class VsaTopologyData:
 
 
 def load_vsa_json(path: Path) -> List[VsaTopologyData]:
-    """加载 EdaLab vsa-static --json 输出 (vsa_curve_v1 schema)。"""
+    """加载 EdaLab vsa-static --json 输出。
+
+    支持的 schema 版本:
+      - vsa_curve_v1: 只有 curve.energy_j (行程边界零点, 曲线形状用)
+      - vsa_curve_v1_1: 新增 curve.energy_from_origin_j (平衡位零点, 与 stored_energy_j 同源)
+
+    V1 修复 (2026-10-07): 显式检查两个 schema, 加载时若存在
+    curve.energy_from_origin_j 就消费; 否则保留 0.0 并可通过
+    vsa_energy_consistency_check 检查潜在误用。
+    """
     d = json.loads(Path(path).read_text(encoding="utf-8"))
-    if d.get("schema") != "vsa_curve_v1":
-        raise ValueError(f"未知 schema: {d.get('schema')}, 期望 vsa_curve_v1")
+    schema = d.get("schema")
+    if schema not in ("vsa_curve_v1", "vsa_curve_v1_1"):
+        raise ValueError(f"未知 schema: {schema}, 期望 vsa_curve_v1 或 vsa_curve_v1_1")
     out = []
     for t in d["topologies"]:
+        curve_pts = []
+        for p in t["curve"]:
+            curve_pts.append(VsaCurvePoint(
+                theta_deg=p["theta_deg"],
+                k_nm_per_rad=p["k_nm_per_rad"],
+                torque_max_nm=p["torque_max_nm"],
+                torque_min_nm=p.get("torque_min_nm", 0.0),
+                energy_j=p["energy_j"],
+                energy_from_origin_j=p.get("energy_from_origin_j", 0.0),
+            ))
         out.append(VsaTopologyData(
             name=t["name"], topology=t["topology"],
             k_min=t["k_min"], k_max=t["k_max"],
@@ -76,10 +98,54 @@ def load_vsa_json(path: Path) -> List[VsaTopologyData]:
             release_velocity_mps=t["release_velocity_mps"],
             bandwidth_min_hz=t["bandwidth_min_hz"], bandwidth_max_hz=t["bandwidth_max_hz"],
             stiffness_ratio=t["stiffness_ratio"], ok=t["ok"],
-            curve=[VsaCurvePoint(p["theta_deg"], p["k_nm_per_rad"],
-                                 p["torque_max_nm"], p["energy_j"]) for p in t["curve"]],
+            curve=curve_pts,
         ))
     return out
+
+
+def vsa_energy_consistency_check(topologies: List[VsaTopologyData],
+                                 tolerance: float = 0.5) -> Dict[str, Any]:
+    """V1 物理量级错误检查: curve.energy_from_origin_j 应与 stored_energy_j 同量级。
+
+    在 |theta| <= elastic_travel_deg/2 的点中, energy_from_origin_j 的最大值
+    应与 stored_energy_j 在 tolerance 内一致 (差异来自离散采样与 span 过滤)。
+
+    历史错误 (2026-10-07 修复前): curve.energy_j 与 stored_energy_j 差 83 倍,
+    任何下游误用 energy_j 当弹性能会得到 √(2·83E/m) ≈ 9x 过大的弹射速度
+    (11.6 m/s 致命弹道)。
+
+    返回 dict:
+      ok: bool — 所有拓扑的曲线能量与 stored_energy_j 一致
+      details: 每拓扑的对比 (stored, max_energy_from_origin, ratio, uses_v1_1_schema)
+      warns: list[str] — 旧 schema 或缺少 energy_from_origin_j 时警告
+    """
+    warns = []
+    details = []
+    ok = True
+    for t in topologies:
+        pts = [p for p in t.curve if abs(p.theta_deg) <= t.elastic_travel_deg / 2 + 1e-6]
+        has_v1_1 = any(p.energy_from_origin_j > 0 for p in pts)
+        if not has_v1_1:
+            warns.append(f"{t.name}: 未提供 energy_from_origin_j (vsa_curve_v1 schema); "
+                         f"无法验证一致性")
+            continue
+        if not pts:
+            warns.append(f"{t.name}: 弹性行程内无采样点")
+            continue
+        max_from_origin = max(p.energy_from_origin_j for p in pts)
+        ratio = max_from_origin / t.stored_energy_j if t.stored_energy_j > 0 else float("inf")
+        consistent = abs(ratio - 1.0) <= tolerance
+        details.append({
+            "name": t.name,
+            "stored_energy_j": t.stored_energy_j,
+            "max_energy_from_origin_j": max_from_origin,
+            "ratio": ratio,
+            "within_tolerance": consistent,
+            "elastic_travel_deg": t.elastic_travel_deg,
+        })
+        if not consistent:
+            ok = False
+    return {"ok": ok and not warns, "details": details, "warns": warns}
 
 
 def select_topology(topologies: List[VsaTopologyData],
@@ -98,10 +164,35 @@ def release_velocity(vsa: VsaTopologyData, direction_deg: float = 45.0) -> List[
 
     v = √(2E/m) (Kotlin 引擎蓄能实测), 按释放角分解。
     direction_deg: 释放方向与水平夹角 (攀岩 dyno 典型 40-60°)。
+
+    V1 修复 (2026-10-07): 强制使用 stored_energy_j (权威值, 平衡位零点),
+    并添加 sanity check 拒绝曲线 energy_j 误用 (>5x stored 时报错)。
     """
+    _vsa_energy_sanity_check(vsa)
     v = math.sqrt(2.0 * vsa.stored_energy_j / max(vsa.mass_kg, 1e-6))
     rad = math.radians(direction_deg)
     return [v * math.cos(rad), v * math.sin(rad)]
+
+
+def _vsa_energy_sanity_check(vsa: VsaTopologyData, max_ratio: float = 5.0) -> None:
+    """V1 sanity: 若曲线 energy_j 是 stored_energy_j 的 >max_ratio 倍, 说明
+    曲线使用了行程边界零点, 下游若把它当弹性能会得到过大的弹射速度。
+
+    这里仅告警不阻塞 (老 schema 也能跑); 阻塞由 vsa_energy_consistency_check 显式调用。
+    """
+    pts = [p for p in vsa.curve if abs(p.theta_deg) <= vsa.elastic_travel_deg / 2 + 1e-6]
+    if not pts or vsa.stored_energy_j <= 0:
+        return
+    max_energy_j = max(p.energy_j for p in pts)
+    if max_energy_j / vsa.stored_energy_j > max_ratio:
+        import warnings
+        warnings.warn(
+            f"{vsa.name}: curve.energy_j max={max_energy_j:.3f}J 是 stored_energy_j="
+            f"{vsa.stored_energy_j:.3f}J 的 {max_energy_j/vsa.stored_energy_j:.1f}x — "
+            f"energy_j 是行程边界零点的曲线积分, 不可当弹性能使用; "
+            f"弹射/捕获请一律用 stored_energy_j 或 energy_from_origin_j",
+            UserWarning, stacklevel=3,
+        )
 
 
 def inject_into_dyno(vsa: VsaTopologyData, c0, p_star,

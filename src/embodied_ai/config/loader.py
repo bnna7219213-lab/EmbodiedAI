@@ -2,7 +2,12 @@
 
 兼容: 无 PyYAML 时使用内置 mini-YAML 解析器 (覆盖 contracts 格式:
 block-style 嵌套 dict、list、行内注释、科学记数法、quoted string)。
+
+环境变量覆盖:
+  EMBODIED_CONTRACTS_DIR: 自定义 contracts 目录路径, 用于测试注入坏契约
+  (plan_v3 Sprint R-A S0.2: 修 test_cli_exit_nonzero_on_broken_contract)
 """
+import os
 from pathlib import Path
 
 try:
@@ -14,7 +19,10 @@ except ImportError:
         return _mini_yaml_parse(text)
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
-CONTRACTS_DIR = REPO_ROOT / "contracts"
+CONTRACTS_DIR = Path(os.environ.get(
+    "EMBODIED_CONTRACTS_DIR",
+    str(REPO_ROOT / "contracts"),
+))
 
 _REQUIRED_KEYS = {
     "hw_requirements.yaml": ["metadata", "compute", "motor_drive", "sensors", "power", "communication", "safety"],
@@ -22,7 +30,9 @@ _REQUIRED_KEYS = {
     "dr_params/manufacturing_variance.yaml": ["metadata", "electrical", "mechanical", "sensing"],
 }
 
-_DBC_REQUIRED_MESSAGES = [0, 100, 104, 108, 112, 116, 120, 300, 900]
+# R4 (2026-10-07): 6 关节全量遥测, JointTelemetry_<joint> 6 IDs (300/304/308/312/316/320)
+_DBC_REQUIRED_MESSAGES = [0, 100, 104, 108, 112, 116, 120,
+                         300, 304, 308, 312, 316, 320, 900]
 
 
 def load_contract(name: str) -> dict:

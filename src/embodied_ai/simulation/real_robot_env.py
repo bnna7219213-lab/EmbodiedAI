@@ -12,8 +12,8 @@
      接口"原则的兑现;
   2. **传输层可替换**: `MockTransport` (零依赖, CI 与 dry-run) /
      `SocketCANTransport` (Linux SocketCAN) / `SerialTransport` (USB-CAN 适配器);
-  3. **CAN-FD 帧按 contracts/canfd/joint_control.dbc 编解码** (9 消息:
-     6 JointCmd + Sync + Telemetry + SafetyEvent), CRC8 与契约一致;
+  3. **CAN-FD 帧按 contracts/canfd/joint_control.dbc 编解码** (14 消息 (R4 后):
+     6 JointCmd + Sync + 6 JointTelemetry + SafetyEvent), CRC8 与契约一致;
   4. **横切安全层 S 在真机侧必须在线**: 每一步先过 ISO13482 监控 + 停止角
      预算, 超限 → 立即下发 STO, 而不是"记录一下继续跑";
   5. **延迟可测**: 记录命令下发→遥测回收的环回延迟, 直接填 SimToRealResult
@@ -44,7 +44,10 @@ __all__ = ["CANFrame", "Transport", "MockTransport", "SocketCANTransport",
 # --------------------------------------------------------------------------- #
 CMD_IDS = {0: 100, 1: 104, 2: 108, 3: 112, 4: 116, 5: 120}
 SYNC_ID = 0
-TELEM_ID_BASE = 300
+# R4 修复 (2026-10-07): 6 关节遥测, stride 4 (与 JointCmd 100/104/.../120 对齐)。
+# DBC JointTelemetry_<joint> 共 6 条: 300/304/308/312/316/320。
+TELEM_IDS = {0: 300, 1: 304, 2: 308, 3: 312, 4: 316, 5: 320}
+TELEM_ID_BASE = 300  # 保留兼容别名; 新代码请用 TELEM_IDS
 SAFETY_ID = 900
 
 # 位置信号缩放: 15-bit × 0.01 deg ⇒ 量程 0~327.67 deg, 配合 180° 偏置可覆盖
@@ -88,11 +91,20 @@ def encode_joint_cmd(joint: int, pos_deg: float, vel_dps: float,
 
 
 def decode_telemetry(frame: CANFrame) -> Dict[str, float]:
-    """JointTelemetry 解包 → (pos_deg, current_a, temp_c, flags)。"""
+    """JointTelemetry 解包 → (pos_deg, current_a, temp_c, flags)。
+
+    R4 修复 (2026-10-07): 按 contracts/canfd/joint_control.dbc 字面位域解包 —
+    actual_current_a 是 bit 16|11@0+ (CAN bit 16 len 11), 在
+    int.from_bytes(d[2:4],"little") 中对应 value bits 0-10, **不需要移位**
+    (旧 `>> 5` 错读 bits 21-31, 跨过 DBC 位边界)。
+    temp_c 是 bit 27|9@0+, 起点 byte3 bit 3, 在
+    int.from_bytes(d[3:5],"little") 中对应 value bits 3-11, 应 >>3
+    (旧 `>> 5` 错读 bits 29-37)。
+    """
     d = frame.data
-    pos = int.from_bytes(d[0:2], "little") & 0x7FFF
-    cur_raw = int.from_bytes(d[2:4], "little") >> 5 & 0x7FF
-    temp_raw = (int.from_bytes(d[3:5], "little") >> 5) & 0x1FF
+    pos = int.from_bytes(d[0:2], "little") & 0x7FFF        # bit 0|15, no shift
+    cur_raw = int.from_bytes(d[2:4], "little") & 0x7FF       # bit 16|11, no shift
+    temp_raw = (int.from_bytes(d[3:5], "little") >> 3) & 0x1FF  # bit 27|9, shift 3
     flags = d[5] if len(d) > 5 else 0
     return {"pos_deg": pos * POS_SCALE, "current_a": cur_raw * 0.01,
             "temp_c": temp_raw * 0.5 - 20.0, "flags": int(flags),
@@ -138,6 +150,10 @@ class MockTransport(Transport):
         self._t = 0.0
         self.sto = False
         self.stats = {"sent": 0, "recv": 0, "dropped": 0, "crc_err": 0}
+        # R4 (2026-10-07): 6 关节全量遥测。每收到一次 SYNC, 排队生成 n_joints
+        # 帧 JointTelemetry (can_id = TELEM_IDS[0..5]), RealRobotEnv._sync_and_read
+        # 必须连续 recv 6 次消费完。本字段记录"还要生成几帧"。
+        self._telem_remaining = 0
         # 虚拟环回延迟 (ms): 真机上这是 CAN 往返 + 驱动响应的实测值; mock 里
         # 用配置值 + 抖动, 让 RealRobotEnv 的延迟统计在无硬件时也有意义
         # (若只记 perf_counter 实测, mock 会得到 0.03ms 这种"假的好看"数字)。
@@ -145,6 +161,30 @@ class MockTransport(Transport):
 
     def open(self) -> None:
         self._t = 0.0
+        self._telem_remaining = 0
+
+    def _build_telemetry(self, j: int) -> CANFrame:
+        """生成关节 j 的 JointTelemetry 帧 (按 DBC 2026-10-07 修正后的位域)。"""
+        d = bytearray(8)
+        pos = int(np.clip((np.rad2deg(self.pose[j]) + 180.0) / POS_SCALE, 0, 0x7FFF))
+        cur = int(np.clip(self.current[j] / 0.01, 0, 0x7FF))
+        tmp = int(np.clip((self.temp[j] + 20.0) / 0.5, 0, 0x1FF))
+        d[0:2] = (pos & 0x7FFF).to_bytes(2, "little")
+        # R4 修复 (2026-10-07): 按 DBC 位域写 telemetry —
+        # actual_current_a 是 bit 16|11, 在 d[2:4] 的 value bits 0-10, **不要 <<5**
+        # (旧 <<5 与 decode_telemetry 的 >>5 同错, 自闭环掩盖真实设备失真)
+        # temp_c 是 bit 27|9, 在 d[3:5] 的 value bits 3-11, 应 <<3
+        cw = cur & 0x7FF
+        d[2:4] = cw.to_bytes(2, "little")
+        tw = (tmp & 0x1FF) << 3
+        d[3:5] = (int.from_bytes(d[3:5], "little") | tw).to_bytes(2, "little")
+        d[5] = 0
+        if self.rng.random() < self.crc_error_rate:
+            d[7] = (crc8(bytes(d[:7])) + 1) & 0xFF
+            self.stats["crc_err"] += 1
+        else:
+            d[7] = crc8(bytes(d[:7]))
+        return CANFrame(TELEM_IDS[j], bytes(d))
 
     def send(self, frame: CANFrame) -> None:
         self.stats["sent"] += 1
@@ -163,6 +203,10 @@ class MockTransport(Transport):
                 self.current[j] = 0.6 * abs(target - self.pose[j]) + 0.2
             else:
                 self.current[j] *= 0.2
+        elif frame.can_id == SYNC_ID:
+            # R4: 收到同步帧 → 标记要生成 n_joints 帧 JointTelemetry, 由后续
+            # 6 次 recv() 逐帧返回。每帧带相同延迟 (CAN 整批回传语义)。
+            self._telem_remaining = self.n_joints
         delay = max(0.0, self.rng.normal(self.latency_ms / 1000.0,
                                          self.latency_ms / 4000.0))
         self._queue.append((self._t + delay, frame))
@@ -170,6 +214,15 @@ class MockTransport(Transport):
 
     def recv(self, timeout_s: float = 0.01) -> Optional[CANFrame]:
         self._t += timeout_s
+        # R4: 优先消费 sync 触发的 6 关节 telemetry 队列
+        if self._telem_remaining > 0:
+            j = self.n_joints - self._telem_remaining
+            self._telem_remaining -= 1
+            self.stats["recv"] += 1
+            self.last_latency_ms = float(max(
+                0.0, self.rng.normal(self.latency_ms, self.latency_ms / 8.0)))
+            return self._build_telemetry(j)
+        # 否则: 检查延迟队列 (cmd/sync 回声, 真机收不到 — 兼容)
         if not self._queue:
             return None
         self._queue = [q for q in self._queue if q[0] <= self._t] or self._queue
@@ -181,26 +234,11 @@ class MockTransport(Transport):
         self.stats["recv"] += 1
         self.last_latency_ms = float(max(
             0.0, self.rng.normal(self.latency_ms, self.latency_ms / 8.0)))
-        j = 0
-        d = bytearray(8)
-        pos = int(np.clip((np.rad2deg(self.pose[j]) + 180.0) / POS_SCALE, 0, 0x7FFF))
-        cur = int(np.clip(self.current[j] / 0.01, 0, 0x7FF))
-        tmp = int(np.clip((self.temp[j] + 20.0) / 0.5, 0, 0x1FF))
-        d[0:2] = (pos & 0x7FFF).to_bytes(2, "little")
-        cw = (cur & 0x7FF) << 5
-        d[2:4] = cw.to_bytes(2, "little")
-        tw = (tmp & 0x1FF) << 5
-        d[3:5] = (int.from_bytes(d[3:5], "little") | tw).to_bytes(2, "little")
-        d[5] = 0
-        if self.rng.random() < self.crc_error_rate:
-            d[7] = (crc8(bytes(d[:7])) + 1) & 0xFF
-            self.stats["crc_err"] += 1
-        else:
-            d[7] = crc8(bytes(d[:7]))
-        return CANFrame(TELEM_ID_BASE, bytes(d))
+        return frame
 
     def close(self) -> None:
         self._queue.clear()
+        self._telem_remaining = 0
 
 
 class SocketCANTransport(Transport):
@@ -357,26 +395,38 @@ class RealRobotEnv(SimEnv):
             self.tr.send(encode_joint_cmd(j, pos_deg, 0.0, self.robot.torque_limit_a))
 
     def _sync_and_read(self) -> None:
-        """下发同步帧 → 收一帧遥测 → 更新状态与延迟统计。"""
+        """下发同步帧 → 收 n_joints 帧 JointTelemetry → 更新状态与延迟统计。
+
+        R4 (2026-10-07): 6 关节全量遥测。MockTransport 在收到 SYNC 后会排队
+        生成 n_joints 帧 JointTelemetry (can_id = TELEM_IDS[j]), 本函数逐帧
+        消费并按 TELEM_IDS 反查关节号, 然后写入 _pose/_current/_temp。
+        真机行为: 同步帧是广播, 各关节异步回传; mock 一次性回传是等价的
+        (延迟用同一 latency_ms 模型)。
+        """
         t0 = time.perf_counter()
         self.tr.send(CANFrame(SYNC_ID, bytes([0xA5]) + b"\x00" * 6 + b"\x00"))
-        frame = self.tr.recv(timeout_s=self.robot.telem_timeout_s)
-        if frame is None:
-            self.latencies_ms.append(self.robot.telem_timeout_s * 1000.0)
-            return
-        wall = (time.perf_counter() - t0) * 1000.0
-        reported = getattr(self.tr, "last_latency_ms", 0.0)
-        self.latencies_ms.append(float(max(wall, reported)))
-        tel = decode_telemetry(frame)
-        if not tel["crc_ok"]:
-            return                       # CRC 错 → 丢弃本帧, 保持上一状态
-        if frame.can_id == SAFETY_ID:
-            self.sto = True
-            return
-        j = 0
-        self._pose[j] = np.deg2rad(tel["pos_deg"] - self.robot.home_deg)
-        self._current[j] = tel["current_a"]
-        self._temp[j] = tel["temp_c"]
+        # can_id → joint 索引反向表 (避免每次 recv 都遍历 TELEM_IDS)
+        id_to_joint = {v: k for k, v in TELEM_IDS.items()}
+        for _ in range(self.robot.n_joints):
+            frame = self.tr.recv(timeout_s=self.robot.telem_timeout_s)
+            if frame is None:
+                self.latencies_ms.append(self.robot.telem_timeout_s * 1000.0)
+                continue
+            wall = (time.perf_counter() - t0) * 1000.0
+            reported = getattr(self.tr, "last_latency_ms", 0.0)
+            self.latencies_ms.append(float(max(wall, reported)))
+            if frame.can_id == SAFETY_ID:
+                self.sto = True
+                continue
+            tel = decode_telemetry(frame)
+            if not tel["crc_ok"]:
+                continue                   # CRC 错 → 丢弃本帧, 保持上一状态
+            j = id_to_joint.get(frame.can_id)
+            if j is None or j >= self.robot.n_joints:
+                continue                    # 未知 can_id, 跳过
+            self._pose[j] = np.deg2rad(tel["pos_deg"] - self.robot.home_deg)
+            self._current[j] = tel["current_a"]
+            self._temp[j] = tel["temp_c"]
 
     # ------------------------------------------------------------------ #
     def _safety_gate(self, action: np.ndarray) -> Tuple[bool, str]:
@@ -441,12 +491,20 @@ class RealRobotEnv(SimEnv):
         done = bool(np.max(np.abs(self._current)) > self.robot.torque_limit_a * 0.9)
         truncated = self.step_count >= self.config.max_episode_steps
         self.record_step(obs, a, reward, obs, done or truncated)
+        # P0 修复: 原代码 success 硬编码 False, RL 训练时无法区分成功/失败。
+        # 任务达成判据: episode 结束时 pose 接近 home 位 (‖pose‖ < threshold),
+        # 且未触发 STO。threshold 默认 0.5 rad ≈ 28.6° (与关节限位 30° 同源)。
+        success_threshold_rad = getattr(self.config, "success_threshold_rad", 0.5)
+        success = bool(not done and not truncated
+                       and dist < success_threshold_rad)
         return StepResult(observation=obs, reward=reward, done=done,
                           truncated=truncated,
-                          info={"sto": self.sto, "success": False,
+                          info={"sto": self.sto, "success": success,
                                 "latency_ms": self.latencies_ms[-1]
                                 if self.latencies_ms else 0.0,
-                                "current_a": float(np.max(np.abs(self._current)))})
+                                "current_a": float(np.max(np.abs(self._current))),
+                                "pose_dist_rad": dist,
+                                "success_threshold_rad": success_threshold_rad})
 
     # ------------------------------------------------------------------ #
     @property

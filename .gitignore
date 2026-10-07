@@ -21,6 +21,25 @@ checkpoints/
 logs/
 *.log
 
+# ---- v0.8: vendor 的 jar 必须入库 (单仓自足的关键) ----
+# 注意: 以下规则**不可**扩展到 vendor/edalab/*.jar
+# vendor/edalab/edalabcore.jar + kotlin-stdlib-*.jar 是"jar 入库 + 消费模式"
+# 决策的载体 — clone 后仅需 JRE 即可运行全部 EDA 能力 (12 步主链)。
+!vendor/edalab/*.jar
+
+# ---- 绝不暴露 EdaLab 源码 (项目硬规则) ----
+# 硬件/EDA 能力一律经 vendor/edalab/*.jar **编译产物**消费; EdaLab 的 Kotlin
+# 源码不属于本项目, 一律不入库。本项目自身是纯 Python, 无 .kt 需求。
+# (此前误提交过 4 个 .kt, 已从索引移除 — 见 CHANGELOG v0.8)
+*.kt
+edalabcore/
+archive/edalabcore-migrated-*/
+
+# ---- 训练检查点 (产物, 不可入库) ----
+# 单个 VLA 检查点约 255MB, 超出 GitHub 单文件 100MB 硬限制, 且属可再生产物。
+# 保留: 数据集 (*.jsonl) 与训练配方 (scripts/vla_train_full.py) — 可复现生成权重。
+*.pt
+
 # ---- IDE / OS ----
 .vscode/
 .idea/

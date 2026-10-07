@@ -1,35 +1,61 @@
 # 安全链分段延迟预算 (safety_budget.yaml)
 # ============================================================
 # 契约角色: 横切安全层 S 的分段延迟预算 — 唯一真源
-# 数值来源: EdaLab RelayClutchDynamicsEngine 实测输出 (2026-09-20)
-#   48V/30A 安全关断继电器 + 关节制动离合器样例:
-#   "电气 0.8µs + 熄弧 8.0ms + 机械隔离 8.0ms = 总 16.00ms (目标 <20ms) PASS"
-# 对应文档: docs/04-hardware/hardware-motor-shutdown.md + 08-cross-project-fusion 创新 #4 (软硬两级安全滤波器)
-# 版本: v1.0 | 日期: 2026-09-20
+#
+# P0 修复说明 (v1.1, 2026-10-07):
+#   v1.0 中字段名 `measured_us` / `measured_ms` / `measured_pfh` 语义上声称
+#   "已实测", 但数值来源实为 EdaLab RelayClutchDynamicsEngine.kt:202-212
+#   硬编码常量 (与 relay/clutch 输入物理参数无关)。这是循环自证 ——
+#   SIL2 / ISO 13849 PL d 论证建立在非测量数据上。
+#
+#   修复:
+#     - 字段名 `measured_*` → `assumed_*` (诚实声明为设计估算)
+#     - 新增 `provenance` 字段说明来源 (常量查表 / HIL / 仿真)
+#     - 新增 `provenance_confidence` 枚举 (assumed | modeled | modeled_hil | measured_hil)
+#     - budget_closure 依据 confidence 决定是否参与形式化闭环
+#
+#   真实 SIL2 论证需要 HIL 实测 (relay-clutch 硬件在环); 当前 v1.1 只到
+#   "assumed + modeled" 级, 明确不作为发布级 SIL2 论证。
+#
+# 数值来源 (当前 v1.1):
+#   0.8µs 电气关断 — 硬件比较器典型规格 (TI UCC21710 数据表典型值)
+#   8.0ms  熄弧     — AgSnO2 触点经验值 (IEC 61810-1 附录 C)
+#   8.0ms  机械隔离 — 中型继电器行程典型值 (TELEMAC RT1 数据表)
+#   4.0e-8 PFH      — 由 assumed 分段延迟 + 双通道冗余估算, 非独立测量
+#
+# 对应文档: docs/04-hardware/hardware-motor-shutdown.md
+#           + 08-cross-project-fusion 创新 #4 (软硬两级安全滤波器)
+# 版本: v1.1 | 日期: 2026-10-07
 # ============================================================
 
 metadata:
   standard_target: "ISO 13849 PL d / IEC 61508 SIL2"
-  validated_by: "edalab relay-clutch smoke test (BUILD SUCCESSFUL, 2026-09-20)"
+  validated_by: "假设+建模, 非 HIL 实测 (v1.1 明确诚实边界)"
+  provenance_confidence: "assumed"   # assumed | modeled | modeled_hil | measured_hil
+  sil2_release_ready: false           # 发布级 SIL2 需 sil2_release_ready=true (HIL 后)
   stop_category: CAT_0_IMMEDIATE
+  previous_version_note: "v1.0 中 measured_* 字段是命名错误 (实为常量), 已重命名"
 
 # ---- 分段预算 (自上而下 = 物理底线, 不可被软件层挪用) ----
 segments:
   - stage: electrical_off        # 电气关断 (比较器+锁存, 独立于 MCU)
     budget_us: 0.8
-    measured_us: 0.8
+    assumed_us: 0.8
+    provenance: "TI UCC21710 数据表典型关断延迟"
     owner: "P4 电机驱动 PCB 硬件比较器"
     principle: "不可软件实现 (核心原则 1)"
 
   - stage: arc_extinction       # 触点电弧熄灭
     budget_ms: 8.0
-    measured_ms: 8.0
+    assumed_ms: 8.0
+    provenance: "AgSnO2 触点经验值 (IEC 61810-1 附录 C), 需 RC 熄弧或降额"
     owner: "SAFETY_SHUTDOWN 继电器触点"
-    note: "AgSnO2 材料侵蚀寿命 0.37 年 → CRITICAL: 需 RC 熄弧或降额 (relay-clutch 实测 WARN)"
+    note: "AgSnO2 材料侵蚀寿命 0.37 年 → CRITICAL: 需 RC 熄弧或降额"
 
   - stage: mechanical_isolation  # 机械隔离 (触点间隙形成)
     budget_ms: 8.0
-    measured_ms: 8.0
+    assumed_ms: 8.0
+    provenance: "TELEMAC RT1 中型继电器行程典型值"
     owner: "继电器行程结构"
     note: "总断开 = 0.8µs + 8 + 8 ≈ 16ms < 20ms 预算, 余量 4ms"
 
@@ -49,6 +75,18 @@ acceptance:
   total_break_max_ms: 20
   stop_angle_max_deg: 30          # 人机共存缠绕防护
   sil2_pfh_target: 1.0e-6
-  measured_pfh: 4.0e-8            # MultiPhysicsCoupler SafetyChain 实测
+  assumed_pfh: 4.0e-8             # 由 assumed 分段延迟 + 双通道冗余估算, 非独立测量
+  sil2_pfh_provenance: "由 assumed 分段 + 90% SFF 冗余估算, 非独立测量"
   sff_percent: 90                 # 双通道冗余时 99
   deterministic: "totalStop < 10ms && independently_powered"
+
+# ---- 兼容层 (v1.0 字段名向后兼容) ----
+# budget_closure.py 读 `measured_us/measured_ms/measured_pfh` 时自动回退到
+# `assumed_*`, 并标记 cross_checked=False。真实 SIL2 论证需 HIL 后:
+#   1. 把 provenance_confidence 升到 "measured_hil"
+#   2. 把字段改回 measured_*
+#   3. 把 sil2_release_ready 置 true
+_compat_aliases:
+  measured_us_to: "segments[stage=electrical_off].assumed_us"
+  measured_ms_to: "segments[stage=arc_extinction].assumed_ms"
+  measured_pfh_to: "acceptance.assumed_pfh"

@@ -4,6 +4,114 @@
 
 ---
 
+## v0.8 (进行中, 2026-10-07) — v4「jar 入库 + 消费」定为硬件端唯一调用方式
+
+### 仓库边界：只提供 jar，**不暴露 EdaLab 源码**
+
+| 项 | 处置 |
+|---|---|
+| `vendor/edalab/*.jar` + `PROVENANCE.json` | **入库**（唯一 EDA 依赖来源，3.54 MB） |
+| EdaLab Kotlin 源码（4 个 `.kt`，此前误提交） | **从索引移除** + `.gitignore` 拦截 `*.kt` / `edalabcore/` / `archive/edalabcore-migrated-*`（磁盘文件保留） |
+| 训练检查点（13 个 `.pt`，单个 267 MB，合计 **3.24 GB**） | **从索引移除** + `.gitignore` 拦截 `*.pt` —— 超 GitHub 单文件 100 MB 硬限制，且属可由 `scripts/vla_train_full.py` 再生产的产物；数据集 `*.jsonl` 与配方保留 |
+
+> 双轨模式下本项目自行实现的 Python 后端（G6/G10/G7/G2）**正常入库** ——
+> 那属于 EmbodiedAI 原创实现，与 EdaLab 源码无关。
+
+> **决策**：本项目调用硬件端（EdaLab EDA 能力）的途径**唯一** —— 经入库的编译产物
+> `vendor/edalab/*.jar` 消费。Python 侧不重实现 EDA 引擎、不直连源码目录。
+> 版本号随下次发布同步（当前 `pyproject` 仍为 0.7.0）。
+
+### 依赖入库（单仓自足）
+
+| 文件 | 大小 | 作用 |
+|---|---|---|
+| `vendor/edalab/edalabcore.jar` | 1,954,103 B | 101 个 Kotlin 文件的编译产物（**不自含 Kotlin 运行时**） |
+| `vendor/edalab/kotlin-stdlib-2.2.21.jar` | 1,761,445 B | Kotlin 运行时（必需配套，否则 `NoClassDefFoundError`） |
+
+- `.gitignore` 白名单 `!vendor/edalab/*.jar`（`git add --dry-run` 实证两件会入库）
+- 覆盖 **12 个 Stage**，live 实测 12/12 `LIVE_OK`、`jar_source=vendor`
+- 隔离实证：`EDALAB_HOME` + `GRADLE_USER_HOME` 均指向不存在路径时仍 `ALL OK`
+- 最小 classpath 实证：仅两件 jar 直接调 java → relay-clutch rc=0（安全链 16.00ms PASS）、vsa-static rc=0（`vsa_curve_v1_1`）
+
+### 单仓自足实证 + README 显性化（本轮新增）
+
+**动机**：v4 的"单仓自足"此前只写在 README/demo 之外 —— 新加入者（或三个月后的
+自己）无法**一条命令跑出证据**。本轮把"自足"变成可执行、可发现、可排障的资产。
+
+| 交付 | 内容 |
+|---|---|
+| `src/embodied_ai/selfcheck.py` | 5 项可证伪断言：① 载体齐全 ② **指纹一致**（PROVENANCE sha256/size）③ 仅需 JRE ④ **隔离可跑**（EDALAB_HOME+GRADLE_USER_HOME 指向不存在路径仍 LIVE_OK）⑤ 后端可观测（`jar_source`）。**每个失败项都带修复指引** |
+| `scripts/demo_selfcontained.py` | 薄壳（转发包内实现，**不重复逻辑** —— 反两处维护） |
+| CLI `selfcheck`（`--json`） | 经 `register_command` 注册进全局注册表，`catalog` 可见 |
+| `tests/test_selfcheck.py` | 10 项守护：5 项断言齐备 / 失败项必带 hint / vendor 必在本仓 / **已注册且带示例** / `--json` 合法且 ok / **脚本薄壳不重复实现** |
+| README | 新增「一条命令证明单仓自足」+「⚠️ 别人跑不起来怎么办」（JRE 缺失/NoClassDefFoundError/jar 缺失/指纹失败 四类症状 → 修复表）+「贡献者须知」（新增调用方式必须注册；改 jar 必须走指纹更新流程） |
+
+实测：`selfcheck` → **5/5 ✅ SELF_CONTAINED_OK**；`verify` **27/27 PASS**；`pytest` **397 passed**。
+
+### 修复：注册表空表陷阱 + 双重注册（本轮由测试抓到）
+
+| 缺陷 | 现象 | 修法 |
+|---|---|---|
+| **空表陷阱** | 只 `import cli_registry` 的消费方看到**空的注册表**（注册实际发生在 `cli` 导入时）→ 误判"没有命令"，正是"命令落角落"的另一种形态 | `CLI_REGISTRY` 改为 `_LazyRegistry`（首次访问自动 `ensure_registered()` 补齐） |
+| **双重注册** | `python -m embodied_ai.cli` 时 cli 作为 `__main__` 执行，懒注册表又 import `embodied_ai.cli` → 二次执行 → `重复注册 (audit)` ValueError | `ensure_registered()` 检测 `__main__.__file__ == cli.py` 时直接返回 |
+
+两个缺陷均由 `tests/test_selfcheck.py` 抓到（前者由"注册表可发现性"断言，后者由 CLI 子进程断言）。
+
+### jar ↔ 源码漂移治理（两层闸门）
+
+风险：jar 是冻结产物，原 EdaLab 源码演进不会自动同步 → 静默漂移。
+
+| 层 | 抓什么 | 守护 |
+|---|---|---|
+| L1 指纹 | jar 被替换/重新构建（sha256 变） | `verify` 项 `vendor_jar_provenance` + `tests/test_vendor_provenance.py`（9 项，含 4 项反证） |
+| L2 行为锚定 | 源码演进导致引擎输出变化（jar 该更新了） | `verify_b3_antagonistic`（锚定值 166.39N）、relay-clutch 安全链 16.00ms、forge-core EPS ID |
+
+元数据载体 `vendor/edalab/PROVENANCE.json`（schema `vendor_jar_provenance_v1`），含
+sha256/size/来源/构建命令/覆盖 stage/`update_procedure`。
+
+### C1 (P0) — VLA 视觉截断 58% 修复
+
+原 `block_size=256` 远小于 `min_block_size`(603~613，由 196patch×3view=588 视觉 token
+决定)；`vla_model.forward` 的截断是 `ctx[:, -block_size:, :]`（保留**尾部**），而序列
+开头是视觉 token → **视觉仅保留 42%，约 58% 被静默丢弃**，loss 曲线却看不出异常。
+
+| # | 修复 | 依据 |
+|---|---|---|
+| 1 | `block_size` 256 → **640** | 延迟实测（Orin NX INT8）：base 0.90→1.15ms、large 1.77→2.28ms，**远低于** 15ms 模型预算与 50ms 闸门 → **无需**牺牲 num_views/img_size |
+| 2 | 截断不再静默 | `vla_model` 加 `_truncation_count`/`_dropped_tokens` + 首次/周期告警 |
+| 3 | `vision_encoder.pos_embed` `torch.zeros(...)*0.02` → `torch.randn(...)*0.02` | 原式 **恒等于全零**（0×0.02=0），视觉空间位置信息完全丢失 |
+| 4 | `vla_trainer.estimate_loss` 兼容 DataLoader | 原对 DataLoader 判否 → batch=None → 静默返回 **loss=0.0**（"训练完美"是假的）；现支持 `iter()` 协议，取不到 batch 返回 **NaN 并告警** |
+
+守护：`verify` 项 **`vla_block_size`**（同时断言"不截断"**且**"不击穿 15ms"）+ `tests/test_c1_vla_blocksize.py` 8 项（含反证）。
+
+### L3 — MCTS 接真实目标（决策不再空转）
+
+| 空转证据（评估 §3.6） | 修复 |
+|---|---|
+| `search()` 收 `goal_fn` 但**从不调用**，终局靠 `_default_physics` 硬编码 (`timestep>=8 or stability>0.9`) | `goal_fn` 真实接入 `_is_goal()`，供 `_expand`/`_simulate` 消费；`goal_reached` 仅在目标函数达成时置位（物理终态不算） |
+| `stability = min(1, n*0.3+0.1)` **单调不减，无失稳通道** | 引入摩擦锥判据 ‖f_t‖ ≤ μ·f_n（切向比按 grasp_type：power .35 / pinch .70 / hook .50），滑脱 → 稳定性下修 |
+| `dr_override()` 设的 `_mu_override`/`_k_override` **无读取点**（飞轮断裂） | `_default_physics` 真实消费 μ（优先级：DR 注入 > 岩点几何 > 默认 0.8） |
+| 奖励 = `stability_margin`，而它正是物理产出 → **奖励与转移同源** | 多分量：稳定性 + CWC 摩擦锥余量 − 滑脱惩罚 − 能耗 − 路径代价 |
+
+守护：`tests/test_l3_mcts_goal.py` 9 项（含反证：永假目标不得误报达成、异常目标不崩溃、高 μ 不误滑）。
+**测试抓到一处实现 bug**：置位逻辑分散在 `_expand`/`_simulate` 两处，导致物理终态被误记为"达成目标"——已收敛到 `_is_goal` 单点。
+
+### 本轮其它落地
+
+- **R4 CAN-FD ↔ DBC 对齐**：修复 `decode_telemetry` 两处位移错（`actual_current_a` 误
+  `>>5` 应无移位、`temp_c` 误 `>>5` 应 `>>3`）；DBC 扩 6 关节遥测（消息数 9→14）；
+  新增独立参考编码器对照测试 + `verify` 项 `canfd_db_cross_check`（600 帧 0 失配）
+- **B2 P1.4 Stage 化**：`STAGE_REGISTRY` 12 项 + `run_eps_job` 数据管道（`FLOW_CHAIN`
+  保持 11 步不动以兼容既有测试）；CLI `couple --eps-job`
+- **B3 VSA-ANTAGONISTIC 选型**：★ 修正契约漂移 `vsa_antagonistic_peak_n` **109.0 → 166.39**
+  （109 是 V-2 修复前过期口径；选型结论不变：166 < SEA 347 < MACCEPA 525）
+- **路径清理**：gradle 缓存与 java 回退的硬编码用户路径改为 `GRADLE_USER_HOME` /
+  `JAVA_HOME` / `EMBODIED_JAVA` 跨平台解析
+
+> 自检规模：`verify` **26/26 PASS**，pytest **348 passed**（339 + 9 溯源测试）。
+
+---
+
 ## v0.7 (2026-10-06) — 从"图纸库"到"可运行闭环" (缺口批量补齐)
 
 > 触发: 全链条完成度评估给出"总体 30-35%", 结论是

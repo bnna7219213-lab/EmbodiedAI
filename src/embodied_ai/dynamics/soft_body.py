@@ -260,11 +260,21 @@ class SoftBody:
         below = P[:, 1] < c.ground_y
         if np.any(below):
             P[below, 1] = c.ground_y
-            # 切向摩擦: 位置投影后衰减切向位移 (近似库仑摩擦)
+            # 切向摩擦 (P0 修复: 原代码语义完全颠倒)
+            #   原: scale = where(norm>max_slide, max_slide/norm, 0.0)
+            #       → 粘着时 (norm≤max_slide) scale=0 → 位移原样保留 (零摩擦, 错误!)
+            #       → 滑脱时 (norm>max_slide) scale=max_slide/norm → 只减部分位移
+            #   正确物理:
+            #     粘着 (norm ≤ max_slide): 摩擦足够阻止移动 → 位移 = 0
+            #                              (scale=1, 把 tangential 全减掉)
+            #     滑脱 (norm >  max_slide): 位移钳位到 max_slide
+            #                              (scale=1-max_slide/norm, 减掉超出部分)
             tangential = P[np.ix_(below, [0, 2])] - self.prev[np.ix_(below, [0, 2])]
             max_slide = c.friction_mu * abs(c.gravity) * h * h
             norm = np.linalg.norm(tangential, axis=1, keepdims=True)
-            scale = np.where(norm > max_slide, max_slide / np.maximum(norm, 1e-12), 0.0)
+            scale = np.where(norm > max_slide,
+                             1.0 - max_slide / np.maximum(norm, 1e-12),
+                             1.0)
             P[np.ix_(below, [0, 2])] -= tangential * scale
 
         # ---- 速度回写 ----
@@ -298,6 +308,9 @@ class SoftBody:
         self.vel = np.zeros_like(self.pos)
         self.lam[:] = 0.0
         self.pins.clear()
+        # P0 修复: pin() 把 inv_mass 置 0 (无限质量), 但原 reset() 只清 pins 不恢复
+        # inv_mass → demo 中前段钉住的点在后续段仍是无限质量, 状态泄漏。
+        self.inv_mass[:] = 1.0 / float(self.mass[0])
         self.grab_idx = np.zeros(0, dtype=int)
         self.grab_target = None
         self._slip, self._grasp_disp = False, np.zeros(3)

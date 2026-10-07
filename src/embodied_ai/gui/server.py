@@ -120,14 +120,28 @@ def routes(state: DashboardState) -> Dict[str, Callable[[Dict[str, list]], Any]]
         from ..safety.certification import build_default_package
         from ..safety.formal import close_budget_loop
         sb = load_contract("safety_budget")
-        total_ms = sum((s["measured_us"] / 1000 if "budget_us" in s else s["measured_ms"])
-                       for s in sb["segments"])
-        closure = close_budget_loop(joint_speed_rad_s=8.0)
+        # v1.1 字段: measured_* → assumed_* (向后兼容)
+        def _g(s, *keys):
+            for k in keys:
+                if k in s:
+                    return s[k]
+            return 0.0
+        total_ms = sum((_g(s, "assumed_us", "measured_us") / 1000 if "budget_us" in s
+                       else _g(s, "assumed_ms", "measured_ms"))
+                      for s in sb["segments"])
+        # v1.1 修复: joint_speed_rad_s=8.0 会停在 inf, 让仪表盘显示不合理。
+        # 用 0.5 rad/s (在预算内可停) 作为默认视图值, 同时暴露 8 rad/s 的诚实失败。
+        closure = close_budget_loop(joint_speed_rad_s=0.5)
+        closure_fast = close_budget_loop(joint_speed_rad_s=8.0)
         pkg = state.cached("cert", lambda: build_default_package().evaluate())
         return {"chain_total_ms": round(total_ms, 4),
                 "budget_max_ms": sb["acceptance"]["total_break_max_ms"],
                 "stop_angle_deg": round(closure.stop_angle_deg, 2),
                 "closure_ok": bool(closure.closure_ok),
+                "closure_ok_at_8rad_s": bool(closure_fast.closure_ok),
+                "stop_angle_deg_at_8rad_s": closure_fast.stop_angle_deg,
+                "provenance": sb.get("metadata", {}).get("provenance_confidence", "assumed"),
+                "sil2_release_ready": sb.get("metadata", {}).get("sil2_release_ready", False),
                 "sil2_pfh_target": sb["acceptance"]["sil2_pfh_target"],
                 "certification": pkg,
                 "mode": state.mode}

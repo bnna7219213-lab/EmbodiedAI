@@ -35,7 +35,16 @@ class VLAConfig:
     n_head: int = 6                 # 注意力头数
     n_kv_head: Optional[int] = None  # GQA KV 头数 (None = MHA = n_head)
     dropout: float = 0.0            # Dropout
-    block_size: int = 256           # 上下文窗口长度 (visual+lang+state+action tokens)
+    # C1 修复 (2026-10-08): 256 → 640。
+    #   原值 256 远小于 min_block_size (603~613, 由 196patch×3view=588 视觉 token
+    #   + lang 8 + state 1 + action_horizon + bos 决定), 导致 vla_model.forward 的
+    #   尾部截断 (ctx[:, -block_size:, :]) 丢掉**开头**的视觉 token — 实测视觉
+    #   仅保留 42%, **约 58% 视觉信息被静默丢弃**, 而 loss 曲线看不出异常。
+    #   640 = 覆盖最大 min_block_size(613, vla_large) 并向上对齐 64 倍数留余量。
+    #   延迟影响已实测 (jetson_bench, Orin NX INT8): base 0.90→1.15ms,
+    #   large 1.77→2.28ms — 远低于 15ms 模型预算与 50ms 端到端闸门,
+    #   因此**无需**牺牲 num_views/img_size。
+    block_size: int = 640           # 上下文窗口长度 (visual+lang+state+action tokens)
 
     # ============== 2. 视觉编码器 (简化 ViT-like) ==============
     img_size: int = 224             # 输入图像尺寸
@@ -99,6 +108,30 @@ class VLAConfig:
     @property
     def total_vision_tokens(self) -> int:
         return self.num_patches * self.num_views
+
+    # P0 修复: block_size 必须 ≥ vision + lang + state + action + bos tokens,
+    # 否则训练时视觉 token 被截断, 视觉信息丢失。原代码 base=256 但视觉
+    # token = 196*3=588, 训练必然截断 (审计 P0)。
+    LANG_TOKENS: int = 8  # replay_dataset.lang_len 固定 8
+
+    @property
+    def min_block_size(self) -> int:
+        """训练所需的最小 block_size (视觉+语言+状态+动作+bos)."""
+        return (self.total_vision_tokens + self.LANG_TOKENS + 1
+                + self.action_horizon + 1)
+
+    def __post_init__(self):
+        # P0 修复: 验证 block_size 覆盖视觉+语言+状态+动作 tokens
+        if self.block_size < self.min_block_size:
+            import warnings
+            warnings.warn(
+                f"VLAConfig.ablation_name={self.ablation_name}: "
+                f"block_size={self.block_size} < min_block_size={self.min_block_size} "
+                f"(vision={self.total_vision_tokens}, lang={self.LANG_TOKENS}, "
+                f"action_horizon={self.action_horizon}); 训练时视觉 token 会被截断, "
+                f"请提升 block_size 或降低 num_views/img_size",
+                stacklevel=2,
+            )
 
     def estimate_params(self) -> dict:
         """估算各组件参数量 (粗略, 用于消融实验的参数量报告)."""

@@ -1,7 +1,11 @@
 # 攀岩竞技柔性体机器人 — v0.7 基础上的从头改进方案
 
-> **日期**: 2026-10-06 | **基础**: v0.7（本日实测核验：pytest 191 passed、verify 20/20 全绿，含 cli.py Dict 注解遗留缺陷一处已修）
+> **日期**: 2026-10-06（v1.1 修订 2026-10-07：A2 循环论证修正、A3 双判诚实化、安全证据链非循环化）
+> **基础**: v0.7（本日实测核验：pytest 191 passed、verify 20/20 全绿，含 cli.py Dict 注解遗留缺陷一处已修）
+> **当前实测**: **pytest 252 passed + 37 subtests**、**verify 21/21 PASS**、`safety` 阈值通过但 `provenance=assumed`（**SIL2 非发布级**，需 HIL 实测升级）
 > **目标形态**: 灵巧手（F5-欠驱动）+ 双腿双足 3D 步态 + 柔性体本体，面向攀岩竞技，全流程硬件自动化设计（EdaLab 12 步主链 + 数据飞轮）
+>
+> **一句话定性 (v1.1 诚实边界)**：本方案作为**研究/工程蓝本、Phase A 场景闭环设计**达标；作为"已验证的端到端具身智能体"或"可上真机的产品"**未达**——仿真链路对攀岩零覆盖、触觉/握力调度未接入 20Hz 控制环、安全证据链停在 `assumed` 而非 `measured_hil`、灵巧手任务集是家庭样本不是攀岩操作、VLA 默认档截断 58% 视觉。这些不是缺陷补丁，是下一阶段（Phase B/C）的核心工作。
 
 ---
 
@@ -54,9 +58,14 @@ v0.7 的 13 个模块是**按缺口清单补的**（G6/G9/G11 各自独立通过
 >
 > **实测周期**：hang → reach → swing → dyno → capture → climb_on（六状态全转移，双足推进 0.600m）
 >
-> **A2 柔性耦合实测**：δ_flex=2.67mm（凝胶量级），F_soft=60.0N vs F_rigid=104.0N（**柔顺降 42%**，ratio 0.577）——VSA-dyno 结论的实验证实
+> **A2 柔性耦合实测 (v1.1 修正)**：早期口径 F_soft=60.0N / F_rigid=104.0N (ratio 0.577, "柔顺降 42%")
+> 是循环论证——60N 是二分搜索反解的目标，回代后必为 60N。审计后 `climb_scene.soft_contact_peak_force`
+> 已改用非循环量：δ_peak 系数 5/4→1.25（与 `climbing_dynamics_core` 口径一致）、删除反向乘子、
+> 改为以刚性峰值 f_rigid + 柔顺比 softening_ratio 表述。**当前实测**：刚性峰值 160-800N、柔性峰值
+> 22.9-161.7N、柔顺比 0.156-0.202（"柔顺降约 4 倍"）——这是物理上真的量出的柔顺效果。
 >
 > **能量调度发现（本阶段最重要的物理结论）**：VSA 满蓄直弹 1.07m/s 对 60N hold 产生 168.9N 峰值力，**必然超限**；攀岩的物理正确做法是捕获前泄能——二分反解得 v_capture_max=0.433m/s，调度后柔顺力恰好压在 60N 限值。此结论同时回答了"摆荡为什么存在"（不是风格，是能量调度的需要）——已固化在 test_energy_scheduling_honest
+
 >
 > **实现中修正的三处**（透明记录）：
 > ① 指尖刚度提取量纲错误两轮：XPBD compliance≠1/k（得 5e7）；终版用 soft_body.grasp_stiffness 真实配置（3000 N/m，凝胶文献量级）
@@ -69,7 +78,7 @@ v0.7 的 13 个模块是**按缺口清单补的**（G6/G9/G11 各自独立通过
 |---|---|---|
 | A1 `climb_scene.py` | 墙面 hold 图谱（位置/朝向/摩擦系数域随机化）+ 竞技周期状态机（触壁/换手/dyno 三模式） | ✅ 一个周期全部状态转移跑通，无 mock 物理量 |
 | A2 柔性指尖×接触耦合 | `soft_body` 的指尖形变接入 Hunt-Crossley 的 δ（当前为刚性 δ）——柔顺捕获分支首次有了真实形变数据 | ✅ 捕获峰值力 < 刚性分支（60N vs 104N，降 42%） |
-| A3 双足×墙面 | `whole_body_3d` 的 3D LIPM/IK 接入墙面多接触约束（4 肢接触雅可比，攀岩文档 G1 资产） | ✅ `wall_contact.py`：4 肢雅可比 `[I₃\|-[r]×]`（手算对照通过）+ 斜壁准静态力分配；蹲起-换脚 7 帧（4→3→4→3→4）**0 失稳**，手峰值 77.3N<150N |
+| A3 双足×墙面 | `whole_body_3d` 的 3D LIPM/IK 接入墙面多接触约束（4 肢接触雅可比，攀岩文档 G1 资产） | ✅ `wall_contact.py`：4 肢雅可比 `[I₃\|-[r]×]`（手算对照通过）+ 斜壁准静态力分配；蹲起-换脚 7 帧（4→3→4→3→4）**动态容差（≤40 N·m）下 0 失稳**，手峰值 77.3N<150N。**诚实边界 (v1.1)**：早期"0 失稳"是恒真断言（原码从不计算 τ）。审计后 `allocate_forces` 已真正解 Σ(p−com)×f 得 τ，7 帧中有 4 帧 τ 超静态阈值 15 N·m（`static_unstable=4`），但被 40 N·m 动态容差覆盖——攀岩换脚本就是动态动作，肌肉/关节瞬时补偿承担余下力矩。**单侧超载（40+ N 侧向 + 单脚）会真实失败**（`test_single_foot_overload_fails_torque_balance` 断言），"0 失稳"不再无差别成立。 |
 | A4 灵巧手×hold | `dexterous_hand` 的 F5 欠驱动腱模型对 hold 形状分类输出抓握型选择 | ✅ 抓握选择=力闭合 ε 数值驱动（三类候选 GraspContact→grasp_quality→argmax，深口袋 hold 正确选出 deep_power ε=0.1044）；wall_contact 手接触升级为指分布模型（ARM_APPROX=False） |
 | A5 集成测试 `test_climb_cycle.py` | 一个完整攀岩周期作为单一测试 | ✅ 全链无 mock；每个模块的输出被下一模块真实消费 |
 
@@ -77,10 +86,14 @@ v0.7 的 13 个模块是**按缺口清单补的**（G6/G9/G11 各自独立通过
 
 | 任务 | 内容 | 验收 |
 |---|---|---|
-| B1 腱驱动关节板 EPS | hw_requirements.yaml 增 climbing 段 → EdaLab forge-core → motor-drive 消费，产板 | 11 步主链对 climbing spec 全绿 |
-| B2 P1.4 Stage 化收官 | 12 个 CLI 命令注册 Open API Stage（既有待办） | EPS job 触发 forge-core→vsa-static 串联 |
-| B3 VSA-ANTAGONISTIC 选型落地 | P1.3 结论（攀岩指尖 109N 物理正确）写入 B1 的电机/减速器参数 | relay-clutch + vsa-static 联合 PASS |
+| B1 腱驱动关节板 EPS | hw_requirements.yaml 增 climbing 段 → EdaLab forge-core → motor-drive 消费，产板 | ✅ 11 步主链对 climbing spec **live 全绿**（chain_green=True，实测 2026-10-07）；EPS `SF-climbing_tendon_drive-climbing_competition_v0_1` 与板种 `TendonDrive-Climbing`（24V/19.2A/4 层 55.4mm）导出，household 默认参数逐字不变 |
+| B2 P1.4 Stage 化收官 | 12 个 CLI 命令注册 Open API Stage（既有待办） | ✅ **已达成**（2026-10-07 实测，**Python 消费侧**实现）：`STAGE_REGISTRY` 注册 12 个 Stage（11 主链 + `vsa-static`），`run_eps_job` **数据管道**串联 `forge-core→vsa-static` 全绿 — EPS ID `SF-climbing_tendon_drive-climbing_competition_v0_1` 与 `vsa_curve_v1_1`（3 拓扑）进 `context` 供下游消费，`jar_source=vendor`。CLI: `embodied-audit couple --eps-job`。测试：`tests/test_b2_stage_pipeline.py` 11 项。**注：G5 烟囱式缺口在 Kotlin 侧且 jar 冻结，故 Stage 化落在消费侧绕过** |
+| B3 VSA-ANTAGONISTIC 选型落地 | P1.3 结论（攀岩指尖 109N 物理正确）写入 B1 的电机/减速器参数 | ✅ **已达成**（2026-10-07 实测）`relay-clutch + vsa-static` 联合 PASS。★**实质修正：契约 109.0 → 166.39N** — 引擎实测 ANTAGONISTIC `peak_force_n=166.39064`，原 109.0 是 V-2 修复（公式改写）前的过期口径，且 docs/04 该表行 `stored(0.635J)` 疑混填 SEA 值（SEA 实测 0.6379）。**选型结论不变**（166 < SEA 347 < MACCEPA 525，仍最接近指尖 60N）。联合判据五条全绿：契约=引擎 / ANTAGONISTIC 峰值最小 / 离合器承载（166.39×0.022=3.66Nm ≤ 额定 12.0Nm 不打滑）/ 安全链 16.00ms<20ms / verdict=PASS。测试：`tests/test_b3_vsa_antagonistic.py` 8 项（含"旧值 109 应被拒绝"反证） |
 | B4 制造容差×柔性体 | dr_params 增加腱刚度/指尖凝胶模量容差（soft_body 参数进 DR） | 飞轮 D4 输出含柔性参数分布 |
+
+**B1 实现要点（2026-10-07）**：任务档案维度只落在 11 步中真正参数化的 2 步（forge-core / motor-drive），其余 9 步沿用 EdaCli 内置样本输入。参数翻译集中在 Python 侧 `build_spec_args()`（yaml → CLI 参数表），Kotlin 侧只做字符串分流（`task_description` 含 climb/tendon → 攀岩策略档；`motor-drive` 变体串 `tendon` → `createClimbingSpec()`），**数值不重复硬编码**。household_grasp 是 yaml 之外的虚拟默认档案（返回空表 → 回退 FLOW_CHAIN.cli_args），既有 210 项测试与 CLI 行为零改动。
+
+**B1 已知失真（诚实边界，B4 前处理）**：ForgeCore 元件库 ENCODER_ABSOLUTE 映射 14bit（契约要求 19bit）；`estimateThermal` 是单三相桥口径，8 通道腱板聚合 19.2A 代入后导出"热裕量不足 3.35°C"WARNING——该告警是模型失真而非真实热风险（通道级桥臂仅 4A，MotorDriveEngine 侧结温 51.1°C、裕量 98.9°C）。已记入 `hw_requirements.yaml` 的 `climbing.known_gaps`。
 
 ### Phase C — 真机触发点（硬件到位当天，v0.7 已铺好的落点）
 

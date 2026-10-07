@@ -83,6 +83,41 @@ BO_ 300 JointTelemetry_SHOULDER_L: 8 SHOULDER_L
  SG_ status_flags : 40|8@0+ (1,0) [0|255] "" JETSON_MASTER,SAFETY_MCU
  SG_ crc8 : 56|8@0+ (1,0) [0|255] "" SHOULDER_L
 
+BO_ 304 JointTelemetry_SHOULDER_R: 8 SHOULDER_R
+ SG_ actual_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" JETSON_MASTER,SAFETY_MCU
+ SG_ actual_current_a : 16|11@0+ (0.01,0) [0|20.47] "A" JETSON_MASTER,SAFETY_MCU
+ SG_ temp_c : 27|9@0+ (0.5,-20) [-20|235.5] "C" JETSON_MASTER,SAFETY_MCU
+ SG_ status_flags : 40|8@0+ (1,0) [0|255] "" JETSON_MASTER,SAFETY_MCU
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" SHOULDER_R
+
+BO_ 308 JointTelemetry_ELBOW_L: 8 ELBOW_L
+ SG_ actual_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" JETSON_MASTER,SAFETY_MCU
+ SG_ actual_current_a : 16|11@0+ (0.01,0) [0|20.47] "A" JETSON_MASTER,SAFETY_MCU
+ SG_ temp_c : 27|9@0+ (0.5,-20) [-20|235.5] "C" JETSON_MASTER,SAFETY_MCU
+ SG_ status_flags : 40|8@0+ (1,0) [0|255] "" JETSON_MASTER,SAFETY_MCU
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" ELBOW_L
+
+BO_ 312 JointTelemetry_ELBOW_R: 8 ELBOW_R
+ SG_ actual_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" JETSON_MASTER,SAFETY_MCU
+ SG_ actual_current_a : 16|11@0+ (0.01,0) [0|20.47] "A" JETSON_MASTER,SAFETY_MCU
+ SG_ temp_c : 27|9@0+ (0.5,-20) [-20|235.5] "C" JETSON_MASTER,SAFETY_MCU
+ SG_ status_flags : 40|8@0+ (1,0) [0|255] "" JETSON_MASTER,SAFETY_MCU
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" ELBOW_R
+
+BO_ 316 JointTelemetry_WRIST_L: 8 WRIST_L
+ SG_ actual_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" JETSON_MASTER,SAFETY_MCU
+ SG_ actual_current_a : 16|11@0+ (0.01,0) [0|20.47] "A" JETSON_MASTER,SAFETY_MCU
+ SG_ temp_c : 27|9@0+ (0.5,-20) [-20|235.5] "C" JETSON_MASTER,SAFETY_MCU
+ SG_ status_flags : 40|8@0+ (1,0) [0|255] "" JETSON_MASTER,SAFETY_MCU
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" WRIST_L
+
+BO_ 320 JointTelemetry_WRIST_R: 8 WRIST_R
+ SG_ actual_pos_deg : 0|15@0+ (0.01,0) [0|327.67] "deg" JETSON_MASTER,SAFETY_MCU
+ SG_ actual_current_a : 16|11@0+ (0.01,0) [0|20.47] "A" JETSON_MASTER,SAFETY_MCU
+ SG_ temp_c : 27|9@0+ (0.5,-20) [-20|235.5] "C" JETSON_MASTER,SAFETY_MCU
+ SG_ status_flags : 40|8@0+ (1,0) [0|255] "" JETSON_MASTER,SAFETY_MCU
+ SG_ crc8 : 56|8@0+ (1,0) [0|255] "" WRIST_R
+
 BO_ 900 SafetyEvent: 8 SAFETY_MCU
  SG_ fault_type : 0|8@0+ (1,0) [0|255] "" JETSON_MASTER
  SG_ fault_value : 8|16@0+ (0.1,0) [0|6553.5] "" JETSON_MASTER

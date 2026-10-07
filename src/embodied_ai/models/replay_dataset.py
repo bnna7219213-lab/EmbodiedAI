@@ -90,14 +90,27 @@ def build_pairs(records: List[Dict[str, Any]], horizon: int = 1,
     split_idx = len(pairs) - n_val
     train, val = pairs[:split_idx], pairs[split_idx:]
 
-    real_fields = [f for f in FEATURE_FIELDS if any(r.get(f) is not None for r in records)]
+    # P0 修复: real_fields 应按 source="real" 判定, 而非"字段非 None"。
+    # 原代码把 source="unknown" 或 source="synthetic" 的记录也计入 real_fields,
+    # 让训练误以为有真实遥测。修复: 只统计 source="real" (或缺失时保守为 False)。
+    real_field_set = set()
+    for r in records:
+        src = str(r.get("source", "")).lower()
+        if src in ("real", "telemetry", "measured"):
+            for f in FEATURE_FIELDS:
+                if r.get(f) is not None:
+                    real_field_set.add(f)
+    real_fields = sorted(real_field_set)
+    synthetic_only_fields = [f for f in FEATURE_FIELDS if f not in real_fields]
     return ReplaySplit(
         train=train, val=val,
         provenance={
             "feature_fields": FEATURE_FIELDS,
             "real_fields": real_fields,
+            "synthetic_only_fields": synthetic_only_fields,
             "synthetic_fields": ["rgb", "lang"],
-            "note": "rgb/lang 为确定性零张量占位 (遥测中不存在), provenance=synthetic_zero",
+            "note": ("rgb/lang 为确定性零张量占位 (遥测中不存在), provenance=synthetic_zero; "
+                     "训练时应按 real_fields 判断真实数据覆盖度, synthetic_only_fields 为空才表示全真"),
             "joints": joint_counts,
         },
         n_records=len(records), n_pairs=len(pairs),

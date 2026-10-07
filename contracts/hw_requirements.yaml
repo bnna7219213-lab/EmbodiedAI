@@ -51,6 +51,29 @@ sensors:
     frame_rate_hz: 100
     hertz_load_limit_n: 60        # 约束7: 软指尖极限 → 需骨架并联方案
     sensing_res_hz: 100            # 滑脱前兆检测带宽需求
+    # Phase 1 硬件移植 (2026-10-07): 电桥微弱信号采集前端 (EdaLab afe-ind CLI 产物)
+    # 消费方: src/embodied_ai/adapters/afe_ind.py + verification.check_afe_ind_frontend
+    # 产物路径: artifacts/afe_ind/ (11 必需 + 2 可选 = 13 文件, 336KB)
+    # 契约对齐: 见 adapters/afe_ind.py::contract_alignment — 5 项 check 全部通过
+    hardware_frontend:
+      engine: edalab://edalabcore/afe-ind
+      artifacts: artifacts/afe_ind/
+      total_gain_x: 1046.83          # 增益 = 仪表放大 201× (R1=10k/RG=100Ω) + PGA 2× + 后级
+      total_gain_db: 60.40
+      bandwidth_hz: 10600            # 抗混叠 LPF fc≈10kHz, 覆盖触觉 sensing_res_hz=100Hz 达 106×
+      input_ref_noise_v_per_sqrt_hz: 3.794e-6  # 27℃ 1Hz 输入参考噪声密度
+      dc_converged: true
+      ac_converged: true
+      transient_converged: true
+      pcb_component_count: 65        # SMT 中等规模, 制造可行
+      drc_violations: 380            # 需 DRC 迭代, 但不阻塞 Phase P 试制
+      excitation: precision_ref + buffered_bridge_drive  # 精密基准 + 缓冲驱动电桥, 低漂移
+      calibration: [RTRIM_zero_trim, CJC_cold_junction]  # 零点修调 + 冷端补偿
+      power: {rail_v: 5.0, virtual_ground_v: 2.5}
+      export_formats: [spice_netlist, gerber_ready_pcb_json, c_driver, bom_csv]
+      phase_p_handoff:
+        status: ready_for_manufacturing
+        blocker: Phase P 硬件采购 (BOM 已固化为 afe_ind_bom.csv)
   vision:
     type: rgb_d_stereo
     frame_rate_hz: 20
@@ -97,6 +120,107 @@ safety:
   chance_constrained_grip:         # 机会约束握力 (μ 不确定性)
     confidence_z: 2.0
     slip_rate_target_percent: 5    # 约束8: 无裕度点估计滑脱率50% → 目标<5%
+
+# ---- Phase B/B1: 攀岩腱驱动关节板需求 (承载于 P4 腱驱动板, 区别于 motor_drive 整机母线板) ----
+# 来源: docs/10-climb-soft-robot/climb-soft-robot-plan.md A2/A3/A4 实测 + P1.3 VSA 静力学
+# 消费方: ForgeCore.createClimbingStrategyInput / MotorDriveEngine.createTendonDriveSpec
+#         (EmbodiedAI 侧 adapters/edalab.py 的 build_spec_args 读取本段生成 CLI 参数)
+climbing:
+  metadata:
+    strategy_version: "climbing_competition_v0.1"
+    task_description: climbing_tendon_drive
+    board_kind: tendon_drive_joint_board
+    derived_from:
+      - "wall_contact.DexterousHandContact (A4, 力闭合选型 + 指分布)"
+      - "dexterous_hand.F5-underactuated (A4, 欠驱动腱耦合)"
+      - "VsaVariableStiffnessEngine.ANTAGONISTIC (P1.3, 拮抗双腱 VSA 选型)"
+    timestamp: "2026-10-07"
+  scenario:
+    domain: wall_climbing_competition
+    wall_overhang_deg: -10            # A3 斜壁准静态段 (负=仰角, wall_contact.WallContactConfig)
+    robot_mass_kg: 20.0               # 对齐 whole_body_3d WholeBodyConfig.mass
+    mu_hand: 0.8
+    mu_foot: 0.9
+  hand:                               # 欠驱动腱拓扑 (dexterous_hand.underactuated_coupling)
+    architecture: F5_underactuated_tendon
+    hands: 2
+    fingers_per_hand: 5
+    joints_per_finger: 3
+    tendon_groups_per_hand: 2         # group0=拇指独立腱, group1=四指主腱
+    coupled_joints_total: 15          # 5指 × 3关节, 由 2 条主腱欠驱动耦合
+    tendon_diameter_mm: 1.0
+    tendon_modulus_gpa: 150.0
+  force_limits:                       # A4 实测同源 (wall_contact / dynamics/vsa_coupling)
+    fingertip_hertz_limit_n: 60.0     # 约束7 同源: 软指尖极限, A4 最弱指约束
+    peak_finger_share: 0.423          # A4 实测: 远端指最大承载份额 (腱耦合比)
+    hand_pull_limit_n: 141.8          # 60 / 0.423 反解 — 双重约束中的更紧者
+    hold_structural_limit_n: 150.0    # hold 结构载荷上限 (较松, 非绑定约束)
+    three_limb_hand_pull_n: 77.3      # A3 蹲起-换脚 4→3→4 序列实测峰值
+    soft_capture_force_n: 60.0        # A2 Hunt-Crossley 柔顺捕获实测
+    rigid_capture_force_n: 104.0      # A2 刚性对照 (超指尖极限 1.73x)
+    # B3 修正 (2026-10-07): 109.0 → 166.39 — 以引擎实测为准。
+    #   旧值 109.0 来自 docs/04 P1.3 表格, 该表 ANTAGONISTIC 行的 stored(0.635J)
+    #   实为 SEA 的值 (SEA 实测 0.6379), 且 109 是 V-2 修复 (ANTAGONISTIC V 形公式
+    #   改为 kMin + t*(kMax-kMin)) **之前**的口径 — plan_v2 记录了 V-2 改写。
+    #   现由 vsa-static --json 实测 ANTAGONISTIC peak_force_n = 166.39064 校准。
+    #   选型结论不变: 三拓扑中 ANTAGONISTIC 峰值最小 (166 < SEA 347 < MACCEPA 525),
+    #   仍是最接近指尖 Hertz 限值 (60N) 的物理正确选型。
+    vsa_antagonistic_peak_n: 166.39   # B3: vsa-static 实测拮抗拓扑弹射峰值 (原 109.0 已过期)
+    vsa_working_range_n: [8.0, 20.0]
+    fingertip_lever_arm_m: 0.022      # B3: 远端关节力臂 (原散见 servo_peak_torque_nm 注释, 显式化供校验)
+    v_capture_max_mps: 0.433          # A3: 能量调度二分反解捕获速度上限
+  motor_drive_tendon:                 # 承载板: 腱驱动关节板
+    bus_voltage_v: 48                 # 复用整机 48V 母线
+    motor_rail_v: 24                  # 48V→24V 通道级 buck (腱伺服标准压)
+    servo_channels: 8                 # 4 腱组电机 + 4 拮抗 VSA 双腱 (2 手 × 2 轴)
+    tendon_group_channels: 4          # 2 手 × 2 腱组 (欠驱动)
+    antagonistic_vsa_channels: 4      # 2 手 × 2 拮抗轴 (P1.3 ANTAGONISTIC 选型)
+    servo_peak_torque_nm: 1.4         # F_tip 60N × 远端关节力臂 0.022m + 级联裕量
+    servo_peak_current_a: 4.0
+    servo_rated_power_w: 15
+    simultaneous_peak_ratio: 0.6      # 8ch × 4A × 0.6 = 19.2A 桥臂峰值
+    bridge_peak_current_a: 19.2
+    bridge_peak_power_w: 460.8        # 19.2A × 24V
+    bus_peak_current_a: 30            # 母线级, 对齐 motor_drive.peak_current_a (含裕量)
+    control_mode: FOC_SENSORED
+    pwm_carrier_hz: 20000
+    current_loop_hz: 10000            # 100μs 周期, 对齐 motor_drive.current_loop_hz
+    encoder_type: absolute_19bit
+    dual_encoder: true                # 电机端 + 腱端负载侧 (欠驱动力闭环)
+    encoder_channels: 16
+    tendon_load_cells: 8              # 每腱 1 个张力负载单元
+  communication:
+    bus: can_fd
+    node_count: 8                     # 8 伺服通道节点 (household 默认 10)
+    data_bps: 5000000
+    control_period_ms: 5              # 200Hz 目标下发
+  safety:
+    hardware_overcurrent_us: 1        # 约束1 同源: 硬件级 <1μs 关断, 不可软件实现
+    independent_comparator_per_channel: true
+    comparator_channels: 8
+    overtemp_shutdown_c: 105
+    watchdog_comm_loss_ms: 50
+    stop_category: CAT_0_IMMEDIATE
+    drop_protection: true             # 握持失效即断电锁止 (攀岩独有失效模式)
+  power:
+    battery:
+      chemistry: li_ion_21700
+      nominal_voltage_v: 48
+      capacity_wh: 320
+    endurance_target_minutes: 15      # 竞技单段 (家用场景为 240min)
+  mechanical:
+    enclosure_class: ip54             # 墙面汗/尘环境 (household 为 open)
+    max_pcb_area_mm2: 2500
+    max_layer_count: 6
+    max_thickness_mm: 1.6
+    operating_temp_max_c: 60
+    max_pcb_accel_g: 20               # dyno 捕获冲击上限 (em-coupling 校验项)
+  known_gaps:                         # 诚实边界 (B4 前处理)
+    - "ForgeCore 元件库 ENCODER_ABSOLUTE 当前映射 AS5048A (14bit), 与 encoder_type: absolute_19bit 不一致, 需补 19bit 器件项"
+    - "腱张力负载单元在 ForgeCore.SensorType 无对应项, 本期借用 ENCODER_ABSOLUTE 通道的 channelCount 承载"
+    - "ForgeCore.estimateThermal 是单三相桥口径 (3×(I/3)²×Rdson), 腱板 8 通道聚合电流 19.2A 代入后
+       命中 DRV8870 (Rdson 270mΩ) 分支 → 导出 '热裕量不足 3.35°C' WARNING。该告警是多通道板代入
+       单桥模型的失真, 非真实热风险 (通道级桥臂仅 4A); B4 前需给 PowerRequirement 加通道数维度"
 
 # ---- 横切数据栈 D (飞轮接口) ----
 data_flywheel:

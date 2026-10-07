@@ -75,7 +75,11 @@ class STLGlobally:
 
 @dataclass
 class STLFinally:
-    """F[a,b] φ — 最终必然"""
+    """F[a,b] φ — 最终必然
+
+    P0 修复: 空窗 (时间超出信号长度, vals 为空) 时返回 -inf,
+    让上层按 |ρ| > 0 判 FAIL。原代码返 0.0 会被误判为"通过"。
+    """
     arg: Any
     a: float
     b: float
@@ -83,7 +87,7 @@ class STLFinally:
         vals = [_eval(self.arg, signal, t + s, dt)
                 for s in _arange_steps(self.a, self.b, dt)
                 if t + s <= _last_t(signal, t, self.b, dt)]
-        return max(vals) if vals else 0.0
+        return float(max(vals)) if vals else float(-np.inf)
 
 
 @dataclass
@@ -134,7 +138,10 @@ class STLUntil:
             val = min(r_psi, min(prefix) if prefix else r_psi)
             if val > best:
                 best = val
-        return float(best) if np.isfinite(best) else 0.0
+        # P0 修复: 空窗 (无 tp 落入 [a,b] 或全超 t_end) 应返回 -inf,
+        # 让上层判 FAIL。原代码 `if np.isfinite(best) else 0.0` 把 -inf 转 0.0,
+        # "从未成立" 被误判为中性而非失败。
+        return float(best)
 
 
 _STL_COMPOSITE = (STLOr, STLAnd, STLGlobally, STLFinally, STLImplies, STLNot,
@@ -158,6 +165,10 @@ def _interp(signal: dict | np.ndarray, t: float, dt: float) -> np.ndarray:
     支持两种信号格式:
       - np.ndarray: 直接作为状态 (单时刻公式评估)
       - dict: {"time": [...], "force": [...], "state": [...]}
+
+    P0 修复: 原 L169 用 `signal.get("force", [0.0] if not ts else [signal.get("force", [0.0])[idx]])`
+    — `.get(k, default)` 的 default **总是**被求值, 会触发内层 `[0.0][idx]` (idx>0 时 IndexError),
+    或"force 缺失但先访问 [0.0]" 的副作用。重写为显式分支。
     """
     if isinstance(signal, np.ndarray):
         return signal
@@ -166,7 +177,16 @@ def _interp(signal: dict | np.ndarray, t: float, dt: float) -> np.ndarray:
     ts = signal.get("time", [])
     idx = int(round(t / dt)) if dt > 0 else 0
     idx = max(0, min(idx, max(len(ts) - 1, 0)))
-    return np.array(signal.get("force", [0.0] if not ts else [signal.get("force", [0.0])[idx]]))
+    # P0 修复: 显式分支, 避免 .get 默认值副作用求值
+    force = signal.get("force")
+    if force is None:
+        return np.array([0.0])
+    if np.ndim(force) >= 1:
+        # force 是数组: 取第 idx 个采样点 (越界钳位)
+        idx_clamped = max(0, min(idx, len(force) - 1)) if len(force) > 0 else 0
+        return np.array([float(force[idx_clamped])])
+    # force 是标量: 直接返回
+    return np.array([float(force)])
 
 
 def _last_t(signal, t, duration, dt):

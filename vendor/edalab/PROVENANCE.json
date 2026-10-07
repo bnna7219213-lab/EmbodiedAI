@@ -1,0 +1,72 @@
+{
+  "schema": "vendor_jar_provenance_v1",
+
+  "_policy": "v4『jar 入库 + 消费』是本项目调用硬件端 (EdaLab EDA 能力) 的唯一方式。Python 侧不重实现 EDA 引擎、不直连 EdaLab 源码目录; 全部 12 个 Stage 经 vendor/edalab/*.jar 消费。",
+  "_why_two_jars": "edalabcore.jar 不自含 Kotlin 运行时 (kotlin/ 类命中 0), 单靠它启动会 NoClassDefFoundError; kotlin-stdlib 是必需配套。两件合计 3.54 MB。",
+
+  "generated": "2026-10-07",
+  "jars": [
+    {
+      "file": "edalabcore.jar",
+      "role": "core",
+      "sha256": "7981f253262df9183af50012e63ed4d254fa9e4eea53b6313e53f6f8e7a1a80c",
+      "size_bytes": 1954103,
+      "class_count": 681,
+      "source": "EdaLab edalabcore 模块 (101 个 Kotlin 源文件) 的编译产物",
+      "build_command": "cd EdaLab && ./gradlew :edalabcore:jar",
+      "kotlin_version": "2.2.21"
+    },
+    {
+      "file": "kotlin-stdlib-2.2.21.jar",
+      "role": "kotlin_runtime",
+      "sha256": "6558a3d233da56a20934b32159f9db5f86ed5816ef098f78a2c223dc6abb79dd",
+      "size_bytes": 1761445,
+      "class_count": 974,
+      "source": "org.jetbrains.kotlin:kotlin-stdlib:2.2.21 (Maven Central)",
+      "note": "required companion — edalabcore.jar does not bundle the Kotlin runtime"
+    }
+  ],
+
+  "coverage": {
+    "stages": [
+      "forge_core", "mass_props", "structural_fem", "kinematics", "thermal_sim",
+      "pi_analysis", "motor_drive", "data_flywheel", "relay_clutch",
+      "em_coupling", "multi_physics", "vsa_static"
+    ],
+    "stage_count": 12,
+    "verified": "2026-10-07 live: 12/12 LIVE_OK, jar_source=vendor",
+    "isolated_verified": "EDALAB_HOME 与 GRADLE_USER_HOME 均指向不存在路径时仍 ALL OK (单仓自足)",
+    "minimal_classpath_verified": "仅两件 jar 构造 classpath 直接调 java: relay-clutch rc=0 (安全链 16.00ms PASS)、vsa-static rc=0 (vsa_curve_v1_1)"
+  },
+
+  "drift_policy": {
+    "_risk": "vendor jar 是冻结的编译产物。原 EdaLab 源码若演进 (改引擎/改公式), jar 不会自动更新 → 行为静默漂移, 且无人知晓。",
+    "detection_layers": [
+      {
+        "layer": "L1 指纹",
+        "what": "jar 被替换/重新构建后 hash 变化",
+        "how": "本文件 sha256 vs 实际文件 sha256 比对",
+        "guard": "verify 检查项 vendor_jar_provenance + tests/test_vendor_provenance.py"
+      },
+      {
+        "layer": "L2 行为锚定",
+        "what": "源码演进导致引擎输出变化 (即使 hash 未变, 或用于发现'该更新了')",
+        "how": "契约锚定值 vs 引擎实测对照。已落地: verify_b3_antagonistic (vsa_antagonistic_peak_n=166.39)、relay-clutch 安全链 16.00ms、forge-core EPS ID",
+        "guard": "tests/test_b3_vsa_antagonistic.py / test_b2_stage_pipeline.py"
+      }
+    ],
+    "update_procedure": [
+      "1) 原 EdaLab 演进后, 重新构建: cd EdaLab && ./gradlew :edalabcore:jar",
+      "2) 用新 jar 覆盖 vendor/edalab/edalabcore.jar",
+      "3) 重算 sha256/size 并更新本文件 (含新的 generated 日期)",
+      "4) 跑 python -m embodied_ai.cli verify —— 若 L2 锚定值断言失败, 说明引擎输出已变, 必须同步更新 contracts/hw_requirements.yaml 的对应锚定值并在 CHANGELOG 记录原因 (参见 B3: 109.0 → 166.39 的先例)",
+      "5) 更新 CHANGELOG 的 vendor 小节"
+    ],
+    "precedent": "B3 (2026-10-07): 契约 vsa_antagonistic_peak_n 原值 109.0 与引擎实测 166.39 不一致 —— 109 是 V-2 修复 (ANTAGONISTIC 公式改写) 前的过期口径。即'契约先于/落后于引擎'的漂移实例, 已由 L2 行为锚定发现并修正。"
+  },
+
+  "known_limits": [
+    "需 JRE (非纯 Python 运行)",
+    "Kotlin 侧缺口 jar 冻结不可修: G2/G3/G5/G6/G7/G10 (详见 plan_L5.md §三)"
+  ]
+}

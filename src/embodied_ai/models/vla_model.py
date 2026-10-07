@@ -115,6 +115,10 @@ if HAS_TORCH:
             # Decoder-only transformer blocks
             self.blocks = nn.ModuleList([VLATransformerBlock(cfg) for _ in range(cfg.n_layer)])
             self.norm_f = nn.LayerNorm(cfg.n_embd)
+            # C1: 截断计数器 — 静默丢视觉 token 是 P0 陷阱 (loss 曲线看不出异常),
+            # 必须可观测。读法: model._truncation_count / model._dropped_tokens
+            self._truncation_count = 0
+            self._dropped_tokens = 0
 
             # Action head
             self.action_tokenizer = ActionTokenizer(
@@ -192,6 +196,21 @@ if HAS_TORCH:
             ctx = torch.cat(tokens, dim=1)  # [B, T, n_embd]
             T = ctx.shape[1]
             if T > self.cfg.block_size:
+                # C1: 截断**不能静默** — 序列开头是视觉 token, 尾部截断会丢弃
+                # 前面的视觉信息 (原 block_size=256 时丢 58%, loss 却看不出异常)。
+                dropped = T - self.cfg.block_size
+                self._truncation_count += 1
+                self._dropped_tokens += dropped
+                if self._truncation_count == 1 or self._truncation_count % 100 == 0:
+                    import warnings
+                    warnings.warn(
+                        f"VLA 上下文被截断: T={T} > block_size={self.cfg.block_size}, "
+                        f"本次丢弃 {dropped} 个 token (累计 {self._truncation_count} 次 / "
+                        f"{self._dropped_tokens} 个)。视觉 token 位于序列开头, 截断将"
+                        f"优先丢失视觉信息 — 请提升 block_size 或降低 "
+                        f"num_views/img_size。",
+                        stacklevel=2,
+                    )
                 ctx = ctx[:, -self.cfg.block_size:, :]  # 截断
                 T = self.cfg.block_size
             ctx = ctx + self.pos_embed[:, :T, :]

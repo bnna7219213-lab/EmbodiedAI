@@ -1,0 +1,8 @@
+BHI	电桥+	Input	惠斯通电桥高端（激励缓冲输出）
+BLO	电桥-	Input	惠斯通电桥低端
+TCJ	热电偶	Input	热电偶接入（配冷端补偿二极管）
+CAL	校准	Input	零点/增益校准注入
+VCM	虚地	Ref	2.5V 虚地参考
+VOUT	输出	Output	放大后输出（驱动 1k ADC 模型）
+AVCC	电源	Power In	本地 LDO 输出 5V
+AGND	模拟地	Ground	模拟地

@@ -7,7 +7,7 @@
 > **版本**: v0.7 | 更新日期: 2026-10-06
 >
 > **一键验收**: `scripts\verify.bat` (cmd) / `.\scripts\verify.ps1` (PowerShell) → `RESULT=VERIFY_OK`
-> 或 `python -m embodied_ai.cli verify` (**20 项**聚合自检, 退出码即结论)
+> 或 `python -m embodied_ai.cli verify` (**24 项**聚合自检, 退出码即结论; 含 pytest = 25 项 + 286 passed)
 >
 > **v0.7 主题**: 针对"全链条完成度 30-35%"的评估结论批量补齐缺口 —
 > 柔性体 (G6) / 双足 3D (G9) / 灵巧手 (G11) / 终身学习 (G12) / GUI (L7) /
@@ -28,11 +28,139 @@
 
 ---
 
+## 硬件端调用：v4「jar 入库 + 消费」是唯一方式
+
+> **定位**：本项目调用硬件端（EdaLab 的 EDA 能力 — 原理图 / PCB / 仿真 / 芯片设计）
+> 的途径**只有一条**：通过入库的编译产物 `vendor/edalab/*.jar` 消费。
+> Python 侧**不**重实现 EDA 引擎，也**不**直连 EdaLab 源码目录。
+
+| 项 | 内容 |
+|---|---|
+| 载体 | `vendor/edalab/edalabcore.jar`（101 个 Kotlin 文件编译产物）+ `vendor/edalab/kotlin-stdlib-2.2.21.jar`（Kotlin 运行时，**必需配套** — core jar 不自含运行时） |
+| 体积 | 3.54 MB（两件） |
+| 运行时依赖 | **仅需 JRE**（无需 JDK / gradle / 外部 EdaLab 目录） |
+| 覆盖能力 | **12 个 Stage**：forge-core、mass-props、structural-fem、kinematics、thermal-sim、pi-analysis、motor-drive、data-flywheel、relay-clutch、em-coupling、multi-physics、vsa-static |
+| 调用入口 | `embodied-audit couple`（主链）/ `couple --eps-job`（Stage 数据管道串联）/ `EdalabAdapter.run_stage()` |
+| 单仓自足实证 | **`embodied-audit selfcheck`**（或 `python scripts/demo_selfcontained.py`）— 5 项断言全绿即证明：载体齐全 / 指纹一致 / 仅需 JRE / 隔离可跑 / 后端可观测 |
+
+**为什么是唯一方式**：实测确认 Python 侧真正缺的 EDA 能力（`netlist` / `schematic` /
+`router` / `gerber` / `MNA` / `thermal` / `FEM`）全在 Kotlin 侧，重写 16,780 行能力的
+收益/成本比很差；jar 入库以 3.54 MB 换来全部能力且零重写。详见 `plan_L5.md`。
+
+### 仓库边界：只提供 jar 编译产物，**不暴露 EdaLab 源码**
+
+这是本项目的**硬规则**，不是可选约定：
+
+| 项 | 状态 |
+|---|---|
+| `vendor/edalab/*.jar`（2 件，3.54 MB）+ `PROVENANCE.json` | ✅ **入库** —— 唯一的 EDA 依赖来源 |
+| EdaLab 的 Kotlin 源码（`*.kt` / `edalabcore/` / `archive/edalabcore-migrated-*`） | ❌ **一律不入库**（`.gitignore` 全面拦截） |
+| 本项目自身的 Python 源码 | ✅ 入库 —— **含双轨模式下自行实现的 G 缺口后端** |
+
+**双轨下的 Python 侧代码可以公开**：G6 / G10 / G7 / G2 这类"jar 冻结改不了"的缺口，
+本项目在 Python 侧自行实现（如 `src/embodied_ai/hardware/hil_bridge.py`），
+经 `@register_python_backend()` 注册为可路由后端。**这部分属于 EmbodiedAI 的原创实现，
+与 EdaLab 源码无关**，因此正常入库。
+
+一句话：**EdaLab 的能力以二进制形态提供（jar），本项目的能力以源码形态提供（Python）。**
+
+> 若你同时持有 EdaLab 源码仓库，请自行从那里获取 `.kt` —— 本仓**有意不镜像**，
+> 以保证实现边界清晰、版本可追溯（靠 `PROVENANCE.json` 的 sha256 与构建信息）。
+
+#### 一条命令证明"单仓自足"（30 秒，无需外部环境）
+
+```bash
+python -m embodied_ai.cli selfcheck          # 人读: 逐项 ✅/❌ + 失败时的修复指引
+python -m embodied_ai.cli selfcheck --json   # 机读: JSON（CI 断言退出码）
+```
+
+实测输出（本机）：
+
+```
+[✅] 1.载体齐全   — core=True (1908KB)
+[✅] 2.指纹一致   — PROVENANCE 校验 9 项，全部一致
+[✅] 3.运行时可用  — jar 来源=vendor | java=openjdk 17.0.18
+[✅] 4.隔离可跑   — 外部 EdaLab/gradle 屏蔽 → 仍 LIVE_OK 且引擎输出正确(含 16.00ms)
+[✅] 5.后端可观测  — status=LIVE_OK, jar_source=vendor
+RESULT: SELF_CONTAINED_OK ✅
+```
+
+> **第 4 项是决定性证据**：把 `EDALAB_HOME` 与 `GRADLE_USER_HOME` 指向**不存在**的路径，
+> 仍能真实执行 Kotlin 引擎 —— 这就是"单仓自足"的定义（不依赖外部 EdaLab 目录 / gradle / JDK）。
+
+#### ⚠️ 别人跑不起来怎么办（排障）
+
+**最可能的原因：机器上没有 JRE（跑 jar 必需）** —— 报错形如
+`NoClassDefFoundError: kotlin/KotlinNothingValueException` 或 `java: command not found`。
+
+| 症状 | 原因 | 修复 |
+|---|---|---|
+| `java: command not found` / `java 未找到` | 没装 JRE | 装 **JRE 17+**（不是 JDK 也行，JRE 足够） |
+| `NoClassDefFoundError: kotlin/...` | classpath 缺 `kotlin-stdlib` | 确认 `vendor/edalab/kotlin-stdlib-*.jar` 在（core jar **不自含**运行时，两件必须齐） |
+| `jar 不存在: 期望 vendor/edalab/edalabcore.jar` | vendor 产物缺失（被 git 误排除 / clone 不完整） | `.gitignore` 已有 `!vendor/edalab/*.jar` 白名单；重新 `git checkout vendor/` 或从原 EdaLab 重建入库 |
+| 指纹校验失败（`2.指纹一致 ❌`） | jar 被替换过 | 有意升级 → 更新 `PROVENANCE.json` 的 sha256/size；非有意 → 检查是否被误改 |
+| 想指定 java 路径（多版本共存） | — | 设 `JAVA_HOME`，或设 `EMBODIED_JAVA=<java 绝对路径>`（解析顺序：PATH → JAVA_HOME → EMBODIED_JAVA） |
+
+**Windows 提示**：装完 JRE 请**重开终端**（刷新 PATH），再用 `where java` 确认。
+
+#### 贡献者须知（改代码前必读两条）
+
+1. **新增任何调用方式（CLI 命令 / 能力后端）必须注册**：
+   - CLI 命令 → `register_command()`（在 `cli.py` 的 `_register_all()` 里注册）；**禁止**直接 `sub.add_parser`
+   - Python 能力后端 → `@register_python_backend(name)`（双轨机制，见 `adapters/edalab.py`）
+   - 守护：`tests/test_cli_registry.py` 断言"注册表 == 实际可执行命令"（**无孤儿**）；重复注册**抛错**
+   - 自检：`embodied-audit catalog` 能看到 = 注册成功；看不到 = 落在角落了
+2. **改动 `vendor/edalab/*.jar` 必须走完整流程**（否则静默漂移）：
+   ```bash
+   # 1) 在原 EdaLab 改 Kotlin 源码 → 重新构建
+   cd <EdaLab> && ./gradlew :edalabcore:jar
+   # 2) 覆盖入库产物
+   cp edalabcore/build/libs/edalabcore.jar <repo>/vendor/edalab/
+   # 3) 更新指纹（sha256/size/日期）—— 不更新则 verify 的 L1 闸门会 FAIL
+   #    编辑 vendor/edalab/PROVENANCE.json
+   # 4) 跑验收：L2 行为锚定会检查引擎输出是否变化
+   embodied-audit verify
+   # 5) 若锚定值变了 → 同步 contracts/ 并在 CHANGELOG 记原因
+   ```
+   > **先例**：B3 就是这么发现契约 `vsa_antagonistic_peak_n` 原值 109.0 落后于引擎实测 166.39 的。
+
+### jar 与源码漂移治理（两层闸门）
+
+jar 是**冻结的编译产物** — 原 EdaLab 源码若演进，jar 不会自动更新 → 行为静默漂移。
+**B3 已实证过一次**：契约 `vsa_antagonistic_peak_n` 原值 109.0 落后于引擎实测 166.39
+（109 是 V-2 修复前的过期口径）。治理分两层，均有自动化守护：
+
+| 层 | 抓什么 | 怎么抓 | 守护 |
+|---|---|---|---|
+| **L1 指纹** | jar 被替换 / 重新构建 | `vendor/edalab/PROVENANCE.json` 记录的 sha256/size vs 实际文件比对 | `verify` 项 `vendor_jar_provenance` + `tests/test_vendor_provenance.py`（含 4 项反证） |
+| **L2 行为锚定** | 源码演进导致引擎输出变化（jar 该更新了） | 契约锚定值 vs 引擎实测：`vsa_antagonistic_peak_n=166.39`、relay-clutch 安全链 16.00ms、forge-core EPS ID | `tests/test_b3_vsa_antagonistic.py`、`test_b2_stage_pipeline.py` |
+
+**jar 更新流程**（原 EdaLab 演进后必做，亦见 `PROVENANCE.json` 的 `update_procedure`）：
+
+1. `cd EdaLab && ./gradlew :edalabcore:jar`
+2. 覆盖 `vendor/edalab/edalabcore.jar`
+3. 重算 sha256/size 并更新 `vendor/edalab/PROVENANCE.json`
+4. 跑 `python -m embodied_ai.cli verify` —— 若 L2 锚定值断言失败，说明引擎输出已变，
+   **必须同步更新 `contracts/hw_requirements.yaml` 的对应锚定值并在 CHANGELOG 记录原因**
+   （先例：B3 的 109.0 → 166.39）
+5. 更新 CHANGELOG 的 vendor 小节
+
+**边界（诚实声明）**：① 需 JRE（非纯 Python）；② Kotlin 侧缺口 jar 冻结不可修
+（G2/G3/G5/G6/G7/G10，见 `plan_L5.md` §三）。
+
+---
+
 ## 快速开始
 
 ```bash
 # 1. 安装 (dev 含 pytest; sim/torch 为可选)
 pip install -e ".[dev]"
+
+# 1b. 硬件端 EDA 能力开箱可用 — vendor jar 已入库, 仅需 JRE (无需 JDK/gradle/外部 EdaLab)
+#     验证单仓自足 (5 项断言: 载体/指纹/运行时/隔离可跑/后端可观测)
+python -m embodied_ai.cli selfcheck
+#     再看 EDA 能力真的能跑 (12 Stage 主链)
+python -m embodied_ai.cli couple --eps-job   # 应 jar_source=vendor
 
 # 2. 全量验收 (推荐入口)
 scripts\verify.bat                  # Windows cmd
@@ -41,7 +169,8 @@ python -m embodied_ai.cli verify    # 跨平台, 退出码 0 = 全绿
 # 3. 单测
 python -m pytest -q
 
-# 4. 常用自检
+# 4. 常用自检 / 命令发现
+python -m embodied_ai.cli catalog    # 列出全部命令 (读全局注册表 — 新命令在此可见)
 python -m embodied_ai.cli contracts
 python -m embodied_ai.cli safety
 python -m embodied_ai.cli sim --dr
@@ -429,5 +558,5 @@ PFH = Σ λ_DU · 1e-9,  λ_DU = λ(1−λ_S%)(1−DC%),  SFF = (Σλ_S+Σλ_DD)
 | 来源 | 提供什么 |
 |---|---|
 | LLMInnovation | AI 模型研发路线（Phase 0-6，从 tokenizer 到 100B+ 多模态） |
-| EdaLab | 硬件设计能力（原理图 → PCB → 仿真 → 芯片设计） |
+| EdaLab | 硬件设计能力（原理图 → PCB → 仿真 → 芯片设计）— **经 `vendor/edalab/*.jar` 消费，这是本项目调用硬件端的唯一方式**（仅需 JRE，见上文专章） |
 | Figure AI | 对标公司（Helix 2.5 端到端模型、Figure 03 人形机器人） |

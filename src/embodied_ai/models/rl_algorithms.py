@@ -64,14 +64,19 @@ class RolloutBuffer:
     rewards: List[float] = field(default_factory=list)
     values: List[float] = field(default_factory=list)
     dones: List[bool] = field(default_factory=list)
+    # P0 修复: 单独存 truncated 标志, 让 GAE 区分真终止 (bootstrap 不启用)
+    # 与截断 (bootstrap 启用, 用 last_value)。原代码合并 done|truncated 存
+    # 到 dones, GAE 无法区分 → 截断时也置 nonterm=0, 丢失 bootstrap 信号。
+    truncateds: List[bool] = field(default_factory=list)
 
-    def add(self, o, a, lp, r, v, d) -> None:
+    def add(self, o, a, lp, r, v, d, truncated=False) -> None:
         self.obs.append(np.asarray(o, dtype=float).reshape(-1))
         self.actions.append(np.asarray(a, dtype=float).reshape(-1))
         self.logps.append(float(lp))
         self.rewards.append(float(r))
         self.values.append(float(v))
         self.dones.append(bool(d))
+        self.truncateds.append(bool(truncated))
 
     def clear(self) -> None:
         self.__init__()  # type: ignore[misc]
@@ -87,18 +92,30 @@ class RolloutBuffer:
             "rewards": np.array(self.rewards, dtype=float),
             "values": np.array(self.values, dtype=float),
             "dones": np.array(self.dones, dtype=bool),
+            "truncateds": np.array(self.truncateds, dtype=bool)
+            if self.truncateds else np.zeros(len(self.dones), dtype=bool),
         }
 
     def compute_gae(self, gamma: float, lam: float,
                     last_value: float = 0.0) -> Tuple[np.ndarray, np.ndarray]:
-        """GAE(γ,λ) 优势 + TD(λ) 回报。"""
+        """GAE(γ,λ) 优势 + TD(λ) 回报。
+
+        P0 修复: nonterm 只在**真终止** (dones[t]=True AND truncateds[t]=False)
+        时为 0。截断 (truncateds[t]=True) 时 nonterm=1, 用 next_v 做 bootstrap。
+        原代码 `nonterm = 0 if (d[t] or t==n-1) else 1` 把 t==n-1 一律当终止,
+        即使它是截断, 也丢弃 bootstrap → 值函数偏差。
+        """
         r, v, d = self.rewards, self.values, self.dones
+        tr = getattr(self, "truncateds", [False] * len(r))
         n = len(r)
         adv = np.zeros(n)
         gae = 0.0
         for t in reversed(range(n)):
             next_v = last_value if t == n - 1 else v[t + 1]
-            nonterm = 0.0 if (d[t] or (t == n - 1)) else 1.0
+            is_terminal = bool(d[t]) and not bool(tr[t])
+            # 对 t==n-1: 若为截断, bootstrap (nonterm=1); 若为真终止, nonterm=0
+            # 对 t<n-1: 若为真终止, nonterm=0; 若未终止, nonterm=1
+            nonterm = 0.0 if is_terminal else 1.0
             delta = r[t] + gamma * next_v * nonterm - v[t]
             gae = delta + gamma * lam * nonterm * gae
             adv[t] = gae
@@ -238,13 +255,21 @@ class PPOAgent:
                 a, logp, v = self.act(obs)
                 res = env.step(a)
                 done = bool(res.done or res.truncated)
-                buf.add(obs["state"], a, logp, res.reward, v, done)
+                # P0 修复: 传入 res.truncated 让 GAE 区分真终止 vs 截断
+                buf.add(obs["state"], a, logp, res.reward, v, done,
+                        truncated=bool(res.truncated))
                 ep_ret += res.reward
                 ep_len += 1
                 obs = res.observation
                 if done:
                     break
-            last_v = self.value(obs) if not (len(buf) and buf.dones[-1]) else 0.0
+            # P0 修复: 仅真终止 (dones[-1]=True AND truncateds[-1]=False) 时 last_v=0;
+            # 截断时用当前 obs 的 value 做 bootstrap。原代码用合并 dones[-1] 判断,
+            # 导致截断时也 last_v=0, 丢 bootstrap。
+            if len(buf) and buf.dones[-1]:
+                last_v = 0.0 if not buf.truncateds[-1] else float(self.value(obs))
+            else:
+                last_v = float(self.value(obs))
             stats = self.update(buf, last_value=last_v)
             returns.append(ep_ret)
             vf_errors.append(stats["value_loss"])

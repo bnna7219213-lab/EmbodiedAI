@@ -1,0 +1,68 @@
+RefDes,Type,Value,Unit,Footprint,SuggestedPart
+VRAW,VOLTAGE_SOURCE,12.0,V,-,On-board LDO output / precision reference (REF50xx)
+FB1,INDUCTOR,1.0E-5,H,0805,Murata BLM ferrite bead / Würth WE-LQF power inductor
+CBULK,CAPACITOR,1.0E-5,F,0402,KEMET/AVX X7R bulk or tantalum, 0805
+CCER,CAPACITOR,1.0E-7,F,0402,Murata GRM 0402 X7R
+VREG,VOLTAGE_SOURCE,5.0,V,-,On-board LDO output / precision reference (REF50xx)
+U_LDO,OPAMP,0.0,,SOP8,ADI ADA4528-2 / OPA2188 (zero-drift, <6nV/√Hz)
+AVCC,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+AGND,GROUND,0.0,,-,-
+DGND,GROUND,0.0,,-,-
+RSTAR,RESISTOR,0.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+CAVDD1,CAPACITOR,1.0E-7,F,0402,Murata GRM 0402 X7R
+CAVDD2,CAPACITOR,1.0E-5,F,0402,KEMET/AVX X7R bulk or tantalum, 0805
+VCM,VOLTAGE_SOURCE,2.5,V,-,On-board LDO output / precision reference (REF50xx)
+VEXC,VOLTAGE_SOURCE,5.0,V,-,On-board LDO output / precision reference (REF50xx)
+UEXC,OPAMP,0.0,,SOP8,ADI ADA4528-2 / OPA2188 (zero-drift, <6nV/√Hz)
+RTOP,RESISTOR,1000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+BR1,RESISTOR,350.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+BR2,RESISTOR,350.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+BR3,RESISTOR,350.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+BR4,RESISTOR,350.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+BHI,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+BLO,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+BMS1,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+BMS2,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+VSTRAIN,VOLTAGE_SOURCE,0.005,V,-,On-board LDO output / precision reference (REF50xx)
+DESD1,DIODE,0.7,V,SOD123,TI TPD1E05U04 / SEMTECH ESD protection diode
+DESD2,DIODE,0.7,V,SOD123,TI TPD1E05U04 / SEMTECH ESD protection diode
+DESD3,DIODE,0.7,V,SOD123,TI TPD1E05U04 / SEMTECH ESD protection diode
+DESD4,DIODE,0.7,V,SOD123,TI TPD1E05U04 / SEMTECH ESD protection diode
+RIN1,RESISTOR,100.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+RIN2,RESISTOR,100.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+CIN1,CAPACITOR,1.0E-10,F,0402,Murata GRM 0402 X7R
+CIN2,CAPACITOR,1.0E-10,F,0402,Murata GRM 0402 X7R
+IU1,OPAMP,0.0,,SOP8,ADI ADA4528-2 / OPA2188 (zero-drift, <6nV/√Hz)
+IU2,OPAMP,0.0,,SOP8,ADI ADA4528-2 / OPA2188 (zero-drift, <6nV/√Hz)
+IU3,OPAMP,0.0,,SOP8,ADI ADA4528-2 / OPA2188 (zero-drift, <6nV/√Hz)
+IR1A,RESISTOR,200000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+IR1B,RESISTOR,200000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+IRG,RESISTOR,2000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+IR3A,RESISTOR,10000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+IR4A,RESISTOR,10000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+IR3B,RESISTOR,10000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+IR4B,RESISTOR,10000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+RTRIM,RESISTOR,50000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+UPGA,OPAMP,0.0,,SOP8,ADI ADA4528-2 / OPA2188 (zero-drift, <6nV/√Hz)
+RFP,RESISTOR,10000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+RGP,RESISTOR,10000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+TCJ,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+DTEMP,DIODE,0.7,V,SOD123,TI TPD1E05U04 / SEMTECH ESD protection diode
+UCJC,OPAMP,0.0,,SOP8,ADI ADA4528-2 / OPA2188 (zero-drift, <6nV/√Hz)
+RCJC,RESISTOR,10000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+IULP,OPAMP,0.0,,SOP8,ADI ADA4528-2 / OPA2188 (zero-drift, <6nV/√Hz)
+IRA,RESISTOR,15000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+IRB,RESISTOR,15000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+IC1,CAPACITOR,1.0E-9,F,0402,Murata GRM 0402 X7R
+IC2,CAPACITOR,1.0E-9,F,0402,Murata GRM 0402 X7R
+IOUTP,OPAMP,0.0,,SOP8,ADI ADA4528-2 / OPA2188 (zero-drift, <6nV/√Hz)
+ROF,RESISTOR,10000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+ROG,RESISTOR,10000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+CLOAD,CAPACITOR,1.0E-4,F,0402,KEMET/AVX X7R bulk or tantalum, 0805
+VOUT,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+RL,RESISTOR,1000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805
+TP_EXC,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+TP_BR,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+TP_OUT,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+CAL,CONNECTOR,0.0,,2.54mm,TE Connectivity / Phoenix 2.54mm test point & XLR
+RCAL,RESISTOR,100000.0,Ω,0603,Yageo RT/AC series ±0.1% metal-film (low-noise), 0603/0805

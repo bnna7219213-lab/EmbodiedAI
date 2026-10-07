@@ -97,10 +97,17 @@ if HAS_TORCH:
             return torch.clamp(action, self.joint_limits[0], self.joint_limits[1])
 
         def forward(self, hidden: torch.Tensor, target_action=None) -> tuple:
-            """训练 forward: 返回预测 + loss。"""
+            """训练 forward: 返回预测 + loss。
+
+            P0 修复: 原代码未 clamp 到 joint_limits, 而 docstring
+            "训练/推理都钳位到 joint_limits" 是假宣称 (decode 有 clamp, forward 无)。
+            修复: forward 也 clamp 到 joint_limits, 让安全宣称生效。
+            """
             B = hidden.shape[0]
             logits = self.action_head(hidden)  # [B, action_dim * horizon]
             pred = logits.reshape(B, self.action_horizon, self.action_dim)
+            # P0 修复: clamp 到 joint_limits (与 decode 一致)
+            pred = torch.clamp(pred, self.joint_limits[0], self.joint_limits[1])
 
             loss = None
             if target_action is not None:

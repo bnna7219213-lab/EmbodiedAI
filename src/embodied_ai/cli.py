@@ -17,7 +17,11 @@ import sys
 from pathlib import Path
 
 from . import console
-from .adapters.edalab import FLOW_CHAIN, EdalabAdapter
+from .adapters.edalab import FLOW_CHAIN, EdalabAdapter, CLIMBING_SPEC
+# CLI 全局注册表 (命令的唯一真源 — 新增命令必须经 register_command 注册)
+from .cli_registry import (
+    CLI_REGISTRY, build_parser, command_catalog, register_command,
+)
 from .config import load_contract, validate_dbc
 from .deploy import audit_latency
 from .platform import (ArmRequirements, arm_budget_overrides, evaluate_readiness,
@@ -39,11 +43,14 @@ PROJECTS = {
     },
     "EdaLab": {
         "root": Path(r"C:\Users\bnna7\workspace\EdaLab"),
-        "role": "怎么造硬件 — 36 引擎 + 11 步主链 (Kotlin)",
-        "probes": ["edalabcore/src/main/kotlin/edalab/core/coupling/MultiPhysicsCoupler.kt",
-                   "edalabcore/src/main/kotlin/edalab/core/physics/RelayClutchDynamicsEngine.kt",
-                   "edalabcore/src/main/kotlin/edalab/core/physics/ElectromechanicalCouplingEngine.kt"],
+        "role": "怎么造硬件 — 36 引擎 + 12 步主链 (Kotlin; vendor jar 已入库)",
+        # 本仓探针: 单仓自足的关键证据 (相对 EmbodiedAI 仓库根)
+        "own_probes": ["vendor/edalab/edalabcore.jar",
+                       "vendor/edalab/kotlin-stdlib-2.2.21.jar"],
+        # 外部源码探针 (仅开发机存在; 单仓运行不依赖, 缺失不算 PARTIAL)
+        "probes": [],
         "engine_dirs": ["design", "physics", "simulation", "safety", "bms", "hil", "ai", "mfg", "coupling", "pcb"],
+        "note": "v0.8: 能力经 vendor/edalab jar 消费 (单仓自足, 仅需 JRE); 外部源码为开发机参照",
     },
     "ECAD-MCAD": {
         "root": Path(r"C:\Users\bnna7\workspace\ECAD-MCAD"),
@@ -81,19 +88,31 @@ def _count_kt_engines(root: Path, dirs: list) -> int:
 def cmd_audit(args):
     console.banner("EmbodiedAI 五项目资产状态汇总 (三栈: 控制L/物理P/数据D/安全S横切)")
     all_ok = True
+    repo = Path(__file__).resolve().parents[2]          # 本仓根 (vendor 探针基准)
     for name, info in PROJECTS.items():
         root = info["root"]
-        exists = root.is_dir()
-        found = sum(1 for p in info["probes"] if (root / p).exists())
-        status = "OK" if exists and found == len(info["probes"]) else ("PARTIAL" if exists else "MISSING")
+        # 探针分两类: 本仓探针 (vendor 等, 相对本仓) + 外部探针 (相对该项目 root)
+        own_probes = info.get("own_probes", [])
+        ext_probes = info.get("probes", [])
+        exists = root.is_dir() or bool(own_probes)
+        own_found = sum(1 for p in own_probes if (repo / p).exists())
+        ext_found = sum(1 for p in ext_probes if (root / p).exists())
+        total = len(own_probes) + len(ext_probes)
+        found = own_found + ext_found
+        status = "OK" if found == total and total else ("PARTIAL" if exists else "MISSING")
         if status != "OK":
             all_ok = False
         console.emit(f"[{status:7s}] {name:13s} {info['role']}")
         console.emit(f"           root={root}")
-        console.emit(f"           probes {found}/{len(info['probes'])}")
-        if "engine_dirs" in info and exists:
+        if own_probes:
+            console.emit(f"           本仓探针 {own_found}/{len(own_probes)} (vendor 入库)")
+        if ext_probes:
+            console.emit(f"           外部探针 {ext_found}/{len(ext_probes)}")
+        if "engine_dirs" in info and root.is_dir():
             n = _count_kt_engines(root, info["engine_dirs"])
             console.emit(f"           Kotlin 引擎文件 ({'+'.join(info['engine_dirs'])}): {n}")
+        if info.get("note"):
+            console.emit(f"           注: {info['note']}")
         console.emit("")
 
     console.emit("--- 契约四件套 ---")
@@ -134,26 +153,60 @@ def cmd_contracts(args):
 
 
 def cmd_safety(args):
-    console.banner("安全链分段延迟预算核对 (safety_budget.yaml <-> EdaLab relay-clutch 实测)")
+    """安全链分段延迟预算核对。
+
+    v1.1 修复: safety_budget.yaml 字段 `measured_*` → `assumed_*` (诚实边界)。
+    CLI 现在向后兼容并明确打印 provenance (assumed | modeled | modeled_hil | measured_hil)。
+
+    返回码语义:
+      0 = 阈值通过 (预算内), 但 SIL2 发布级就绪与否**不改变返回码**
+          (由 CLI 输出显式报告, 用户/CI 按需自行 gate)
+      1 = 阈值失败 (超预算, 真物理不安全)
+
+    这样 `safety` 子命令语义是"物理预算是否安全" (硬判定), 而 SIL2 发布
+    就绪是"证据链是否到 HIL 级" (软报告)。两者正交。
+    """
+    console.banner("安全链分段延迟预算核对 (safety_budget.yaml)")
     sb = load_contract("safety_budget")
+    meta = sb.get("metadata", {})
+    prov = meta.get("provenance_confidence", "assumed")
+    sil2_release_ready = meta.get("sil2_release_ready", False)
+    if prov == "assumed":
+        console.emit(f"  [诚实边界] provenance=assumed, SIL2 非发布级")
+        console.emit(f"              SIL2 发布需 HIL 实测 → 把 provenance_confidence 升为 'measured_hil'")
     total_ms = 0.0
+    def _g(seg, *keys):
+        for k in keys:
+            if k in seg:
+                return seg[k]
+        return 0.0
     for seg in sb["segments"]:
         if "budget_us" in seg:
-            console.emit(f"  {seg['stage']:24s} {seg['measured_us']} us  ({seg['owner']})")
-            total_ms += seg["measured_us"] / 1000
+            val = _g(seg, "assumed_us", "measured_us")
+            label = "assumed" if "assumed_us" in seg else "measured"
+            console.emit(f"  {seg['stage']:24s} {val} us ({label})  ({seg['owner']})")
+            total_ms += val / 1000
         else:
-            console.emit(f"  {seg['stage']:24s} {seg['measured_ms']} ms  ({seg['owner']})")
-            total_ms += seg["measured_ms"]
+            val = _g(seg, "assumed_ms", "measured_ms")
+            label = "assumed" if "assumed_ms" in seg else "measured"
+            console.emit(f"  {seg['stage']:24s} {val} ms ({label})  ({seg['owner']})")
+            total_ms += val
     acc = sb["acceptance"]
-    ok = total_ms < acc["total_break_max_ms"]
+    threshold_ok = total_ms < acc["total_break_max_ms"]
     console.emit(f"\n  合计 {total_ms:.2f} ms < {acc['total_break_max_ms']} ms 目标 -> "
-                 f"{'PASS ' + console.ok() if ok else 'FAIL ' + console.fail()}")
-    sil2 = acc["measured_pfh"] < acc["sil2_pfh_target"]
-    console.emit(f"  SIL2: PFH {acc['measured_pfh']:.1e} < {acc['sil2_pfh_target']:.1e} -> "
-                 f"{'PASS' if sil2 else 'FAIL'}")
+                 f"{'PASS ' + console.ok() if threshold_ok else 'FAIL ' + console.fail()}")
+    pfh_val = acc.get("assumed_pfh", acc.get("measured_pfh", 0))
+    pfh_key = "assumed_pfh" if "assumed_pfh" in acc else "measured_pfh"
+    sil2_pass = pfh_val < acc["sil2_pfh_target"]
+    sil2_flag = "PASS*" if (sil2_pass and prov != "measured_hil") else ("PASS" if sil2_pass else "FAIL")
+    console.emit(f"  SIL2 阈值: PFH({pfh_key}) {pfh_val:.1e} < {acc['sil2_pfh_target']:.1e} -> {sil2_flag}"
+                 + ("  (* 假设+建模, 非 HIL 实测, 非发布级)" if sil2_flag == "PASS*" else ""))
     sw = sb.get("software_filters", [])
     console.emit(f"  软件滤波: {', '.join(f['stage'] for f in sw)}")
-    return 0 if (ok and sil2) else 1
+    # 输出发布级就绪状态 (显式报告, 不改变退出码)
+    console.emit(f"\n  SIL2 发布级就绪: {sil2_release_ready} (sil2_pass={sil2_pass}, "
+                 f"release_ready={sil2_release_ready})")
+    return 0 if threshold_ok else 1
 
 
 def cmd_couple(args):
@@ -180,6 +233,19 @@ def cmd_couple(args):
         for line in r.get("risk_lines", [])[:3]:
             console.emit(f"  {line}")
         all_ok = all_ok and r["status"] == "LIVE_OK"
+    # B2 (P1.4 Stage 化): EPS job 串联 forge-core → vsa-static (数据管道, 非烟囱式)
+    if getattr(args, "eps_job", False):
+        console.emit("\n[4] EPS job 串联 (forge-core → vsa-static, Stage 数据管道):")
+        job = adapter.run_eps_job(["forge_core", "vsa_static"],
+                                  spec=CLIMBING_SPEC, mode="live")
+        console.emit(f"  spec={job['spec']} steps={job['steps']}/{job['expected_steps']} "
+                     f"ok={'YES' if job['ok'] else 'NO'}")
+        for name, ctx in job["context"].items():
+            extra = ctx.get("eps_id") or (
+                f"schema={ctx.get('vsa_schema')} tops={len(ctx.get('vsa_topologies') or [])}")
+            console.emit(f"  stage {name:12s} kind={str(ctx['kind']):9s} -> {extra}")
+        console.emit(f"  jar_source={job['results'][0].get('jar_source') if job['results'] else 'n/a'}")
+        all_ok = all_ok and job["ok"]
     console.emit(f"\n11 步主链: {'ALL OK ' + console.ok() if all_ok else 'FAIL ' + console.fail()}")
     return 0 if all_ok else 1
 
@@ -592,6 +658,23 @@ def cmd_train(args):
     return 0 if ok else 1
 
 
+def cmd_selfcheck(args):
+    """单仓自足实证 (v4): vendor jar 载体/指纹/运行时/隔离可跑/后端可观测 五项断言。
+
+    委托给 `embodied_ai.selfcheck`（核心逻辑在包内, 便于脚本与测试共用）。
+    """
+    import json as _json
+
+    from .selfcheck import render, run_selfcheck
+
+    res = run_selfcheck()
+    if getattr(args, "json", False):
+        console.emit(_json.dumps(res, ensure_ascii=False, indent=2))
+    else:
+        render(res)
+    return 0 if res["ok"] else 1
+
+
 def cmd_gui(args):
     """L7 仪表盘: --once 只自检, 否则常驻服务。"""
     console.banner("L7 运行台 (零依赖 Web 仪表盘)")
@@ -663,111 +746,187 @@ def cmd_nanogpt(args):
     return 0
 
 
+def cmd_catalog(args):
+    """打印 CLI 命令目录 (数据源: 全局注册表 CLI_REGISTRY)。
+
+    存在意义: 新增命令若未进注册表, 这里就看不到 —— 这是"不落在角落"的
+    可观测手段, 与 tests/test_cli_registry.py 的孤儿检测互为呼应。
+    """
+    console.emit(command_catalog())
+    return 0
+
+
+def _register_all() -> None:
+    """把全部 CLI 命令注册进**全局注册表** (唯一真源, 2026-10-08)。
+
+    重构动机: 此前参数声明 (add_parser/add_argument) 与 dispatch 字典分离两处,
+    新增命令要改两处 → 极易只改一处 → 命令落在角落无人顾及。
+    现全部收进 `cli_registry.CommandSpec`, `main()` 启动时读注册表构建 parser。
+
+    `add_args` 回调里仍是原生 argparse 调用 (语义不变), 只是搬了位置。
+    """
+    R = register_command
+
+    # ---------------- 资产 / 契约 ----------------
+    R("audit", "五项目资产状态汇总", group="资产", since="v0.5",
+      examples=["embodied-audit audit"])(cmd_audit)
+    R("contracts", "四件套契约校验", group="资产", since="v0.5",
+      examples=["embodied-audit contracts"])(cmd_contracts)
+
+    # ---------------- 硬件 / EDA (v4 jar 消费模式) ----------------
+    R("couple", "EdaLab 主链 (11 步) + live 冒烟 + EPS job 串联", group="硬件/EDA",
+      since="v0.5",
+      add_args=lambda p: (
+          p.add_argument("--live", action="store_true",
+                         help="真调 Kotlin 引擎冒烟 (relay-clutch)"),
+          p.add_argument("--eps-job", action="store_true",
+                         help="B2: EPS job 串联 forge-core -> vsa-static"),
+      ),
+      examples=["embodied-audit couple --eps-job",
+                "embodied-audit couple --live"])(cmd_couple)
+    R("dr", "飞轮 DR 制造容差闭环 (ICT/FCT → DR → 训练)", group="硬件/EDA",
+      since="v0.5", examples=["embodied-audit dr"])(cmd_dr)
+    R("foc", "FOC + SVPWM + 硬件自动关机链时序验证", group="硬件/EDA",
+      since="v0.7", examples=["embodied-audit foc"])(cmd_foc)
+    R("hand", "G11 灵巧手设计决策矩阵", group="硬件/EDA", since="v0.7",
+      examples=["embodied-audit hand"])(cmd_hand)
+    R("real", "真机闭环 (Sim-to-Real 最后一公里)", group="硬件/EDA", since="v0.7",
+      add_args=lambda p: (
+          p.add_argument("--transport", default="mock",
+                         choices=["mock", "socketcan", "serial"]),
+          p.add_argument("--steps", type=int, default=60),
+      ),
+      examples=["embodied-audit real --transport mock --steps 60",
+                "embodied-audit real --transport socketcan   # 真机 (需硬件)"])(cmd_real)
+    R("cert", "G10 安全认证证据包 (SIL/PFH/RTM)", group="硬件/EDA", since="v0.7",
+      add_args=lambda p: p.add_argument("--md", default=None,
+                                        help="导出 Markdown 证据包到该路径"),
+      examples=["embodied-audit cert --md docs/cert.md"])(cmd_cert)
+
+    # ---------------- 仿真 ----------------
+    R("sim", "仿真栈冒烟 (自动选择可用后端)", group="仿真", since="v0.5",
+      add_args=lambda p: (
+          p.add_argument("--scene", default="point_mass", help="场景名"),
+          p.add_argument("--backend", default="auto",
+                         help="auto|reference|mujoco|pybullet"),
+          p.add_argument("--steps", type=int, default=20),
+          p.add_argument("--seed", type=int, default=0),
+          p.add_argument("--dr", action="store_true", help="启用域随机化采样"),
+      ),
+      examples=["embodied-audit sim --scene point_mass --steps 20",
+                "embodied-audit sim --dr --steps 50"])(cmd_sim)
+    R("sim2real", "Sim-to-Real 差距诊断", group="仿真", since="v0.5",
+      add_args=lambda p: (
+          p.add_argument("--backend", default="auto"),
+          p.add_argument("--episodes", type=int, default=3),
+          p.add_argument("--steps", type=int, default=300),
+          p.add_argument("--dt", type=float, default=0.01, help="仿真步长 (s)"),
+          p.add_argument("--noise", type=float, default=0.02, help="真机侧噪声"),
+          p.add_argument("--seed", type=int, default=0),
+      ),
+      examples=["embodied-audit sim2real --episodes 3 --steps 300"])(cmd_sim2real)
+    R("biped", "双足步态生成 + ZMP 稳定性检查", group="仿真", since="v0.5",
+      add_args=lambda p: (
+          p.add_argument("--steps", type=int, default=6, help="行走步数"),
+          p.add_argument("--step-length", type=float, default=0.15),
+          p.add_argument("--step-time", type=float, default=1.0),
+          p.add_argument("--com-height", type=float, default=0.80),
+          p.add_argument("--dt", type=float, default=0.005),
+          p.add_argument("--foot-length", type=float, default=0.16),
+          p.add_argument("--foot-width", type=float, default=0.08),
+          p.add_argument("--margin", type=float, default=0.02),
+      ),
+      examples=["embodied-audit biped --steps 6 --step-length 0.15"])(cmd_biped)
+    R("soft", "G6 柔性体动力学 (XPBD) 自检", group="仿真", since="v0.7",
+      examples=["embodied-audit soft"])(cmd_soft)
+    R("wholebody", "G9 双足 3D 全身控制 (3D ZMP + IK)", group="仿真", since="v0.7",
+      add_args=lambda p: p.add_argument("--steps", type=int, default=4),
+      examples=["embodied-audit wholebody --steps 4"])(cmd_wholebody)
+
+    # ---------------- 训练 / 模型 ----------------
+    R("train", "训练管线自检 (BC/PPO/SAC/扩散)", group="训练", since="v0.7",
+      add_args=lambda p: (
+          p.add_argument("--algo", default="bc",
+                         choices=["bc", "ppo", "sac", "diffusion"]),
+          p.add_argument("--iters", type=int, default=None,
+                         help="省略时按算法取已标定的默认规模"),
+          p.add_argument("--episodes", type=int, default=10),
+      ),
+      examples=["embodied-audit train --algo bc",
+                "embodied-audit train --algo ppo --iters 200"])(cmd_train)
+    R("nanogpt", "nanoGPT 训练底座适配 (探测 + 训练计划)", group="训练", since="v0.5",
+      add_args=lambda p: (
+          p.add_argument("--root", default=None, help="nanoGPT 仓库根"),
+          p.add_argument("--size", default="vla_tiny",
+                         choices=["vla_tiny", "vla_small", "vla_base", "vla_large"]),
+          p.add_argument("--out", default="output/nanogpt", help="训练计划输出目录"),
+      ),
+      examples=["embodied-audit nanogpt --size vla_tiny"])(cmd_nanogpt)
+    R("bench", "VLA 推理延迟基准 (roofline)", group="训练", since="v0.7",
+      add_args=lambda p: (
+          p.add_argument("--size", default="vla_tiny",
+                         choices=["vla_tiny", "vla_small", "vla_base", "vla_large"]),
+          p.add_argument("--platform", default="jetson_orin_nx_16gb",
+                         choices=["jetson_orin_nx_16gb", "jetson_orin_nano",
+                                  "jetson_agx_orin", "rk3588", "generic_arm_cpu"]),
+          p.add_argument("--precision", default="int8",
+                         choices=["int8", "fp16", "fp32"]),
+      ),
+      examples=["embodied-audit bench --size vla_tiny --platform jetson_orin_nx_16gb"])(cmd_bench)
+    R("lifelong", "G12 终身学习 (EWC + 回放)", group="训练", since="v0.7",
+      examples=["embodied-audit lifelong"])(cmd_lifelong)
+
+    # ---------------- 平台 / 运行台 ----------------
+    R("platform", "Linux on ARM 目标能力探测 + 就绪评估", group="平台", since="v0.6",
+      add_args=lambda p: (
+          p.add_argument("--root", default=None,
+                         help="目标板文件系统快照根 (含 proc/ sys/ dev/ etc/)"),
+          p.add_argument("--strict", action="store_true",
+                         help="强制判定架构 (开发机上非 ARM 时不再标 N/A)"),
+          p.add_argument("--as-target", action="store_true",
+                         help="把当前主机当作部署目标做完整就绪判定"),
+          p.add_argument("--json", default=None, help="探测+检查结果写成 JSON"),
+          p.add_argument("--emit-units", default=None,
+                         help="按探测到的 isolcpus 渲染 systemd 单元到该目录"),
+      ),
+      examples=["embodied-audit platform --as-target",
+                "embodied-audit platform --root ./snap --json probe.json"])(cmd_platform)
+    R("gui", "L7 运行台 (零依赖 Web 仪表盘)", group="平台", since="v0.7",
+      add_args=lambda p: (
+          p.add_argument("--port", type=int, default=8765),
+          p.add_argument("--once", action="store_true",
+                         help="只跑自检 (起服务→拉 API→关服务), 不常驻"),
+      ),
+      examples=["embodied-audit gui --once",
+                "embodied-audit gui --port 8765"])(cmd_gui)
+
+    # ---------------- 验收 ----------------
+    R("safety", "安全链预算核对", group="验收", since="v0.5",
+      examples=["embodied-audit safety"])(cmd_safety)
+    R("verify", "一键全量自检 (CI / scripts 入口)", group="验收", since="v0.5",
+      add_args=lambda p: p.add_argument("--no-pytest", action="store_true",
+                                        help="跳过 pytest 套件"),
+      examples=["embodied-audit verify", "embodied-audit verify --no-pytest"])(cmd_verify)
+    R("catalog", "列出全部命令 (读全局注册表)", group="验收", since="v0.8",
+      examples=["embodied-audit catalog"])(cmd_catalog)
+    R("selfcheck", "单仓自足实证 (v4: vendor jar + 隔离可跑 + 指纹一致)", group="验收",
+      since="v0.8",
+      add_args=lambda p: p.add_argument("--json", action="store_true",
+                                        help="JSON 输出 (CI 断言用)"),
+      examples=["embodied-audit selfcheck",
+                "embodied-audit selfcheck --json"])(cmd_selfcheck)
+
+
+# 模块导入即完成注册 (幂等: 模块只会被 import 一次)
+_register_all()
+
+
 def main(argv=None):
     console.ensure_utf8()
-    ap = argparse.ArgumentParser(prog="embodied-audit", description="EmbodiedAI 统一 CLI")
-    sub = ap.add_subparsers(dest="cmd", required=True)
-
-    sub.add_parser("audit", help="五项目资产状态汇总")
-    sub.add_parser("contracts", help="四件套契约校验")
-    sub.add_parser("safety", help="安全链预算核对")
-    p_couple = sub.add_parser("couple", help="K2: EdaLab 11 步主链 (真实口径) + live 冒烟选项")
-    p_couple.add_argument("--live", action="store_true", help="真调 Kotlin 引擎冒烟 (relay-clutch)")
-    sub.add_parser("dr", help="K2: 飞轮 DR 制造容差闭环")
-
-    p_sim = sub.add_parser("sim", help="仿真栈冒烟 (自动选择可用后端)")
-    p_sim.add_argument("--scene", default="point_mass", help="场景名 (默认 point_mass 参考环境)")
-    p_sim.add_argument("--backend", default="auto", help="auto|reference|mujoco|pybullet")
-    p_sim.add_argument("--steps", type=int, default=20)
-    p_sim.add_argument("--seed", type=int, default=0)
-    p_sim.add_argument("--dr", action="store_true", help="启用域随机化采样")
-
-    p_s2r = sub.add_parser("sim2real", help="Sim-to-Real 差距诊断")
-    p_s2r.add_argument("--backend", default="auto")
-    p_s2r.add_argument("--episodes", type=int, default=3)
-    p_s2r.add_argument("--steps", type=int, default=300)
-    p_s2r.add_argument("--dt", type=float, default=0.01, help="仿真步长 (s)")
-    p_s2r.add_argument("--noise", type=float, default=0.02, help="真机侧观测/动作噪声")
-    p_s2r.add_argument("--seed", type=int, default=0)
-
-    p_biped = sub.add_parser("biped", help="双足步态生成 + ZMP 稳定性检查")
-    p_biped.add_argument("--steps", type=int, default=6, help="行走步数")
-    p_biped.add_argument("--step-length", type=float, default=0.15)
-    p_biped.add_argument("--step-time", type=float, default=1.0)
-    p_biped.add_argument("--com-height", type=float, default=0.80)
-    p_biped.add_argument("--dt", type=float, default=0.005)
-    p_biped.add_argument("--foot-length", type=float, default=0.16)
-    p_biped.add_argument("--foot-width", type=float, default=0.08)
-    p_biped.add_argument("--margin", type=float, default=0.02)
-
-    p_ng = sub.add_parser("nanogpt", help="nanoGPT 训练底座适配 (探测 + 训练计划)")
-    p_ng.add_argument("--root", default=None, help="nanoGPT 仓库根 (默认内置路径)")
-    p_ng.add_argument("--size", default="vla_tiny", choices=["vla_tiny", "vla_small", "vla_base", "vla_large"])
-    p_ng.add_argument("--out", default="output/nanogpt", help="训练计划输出目录")
-
-    p_plat = sub.add_parser("platform", help="Linux on ARM 目标能力探测 + 就绪评估 (v0.6)")
-    p_plat.add_argument("--root", default=None,
-                        help="目标板文件系统快照根 (含 proc/ sys/ dev/ etc/); 缺省探测当前主机")
-    p_plat.add_argument("--strict", action="store_true",
-                        help="强制判定架构 (开发机上非 ARM 时不再标 N/A)")
-    p_plat.add_argument("--as-target", action="store_true",
-                        help="把当前主机当作部署目标做完整就绪判定 (缺省只探测信息)")
-    p_plat.add_argument("--json", default=None, help="把探测+检查结果写成 JSON")
-    p_plat.add_argument("--emit-units", default=None,
-                        help="按探测到的 isolcpus 渲染 systemd 单元到该目录")
-
-    p_verify = sub.add_parser("verify", help="一键全量自检 (CI / scripts 入口)")
-    p_verify.add_argument("--no-pytest", action="store_true", help="跳过 pytest 套件")
-
-    # ---- v0.7 ---- #
-    p_soft = sub.add_parser("soft", help="G6 柔性体动力学 (XPBD) 自检")
-    p_wb = sub.add_parser("wholebody", help="G9 双足 3D 全身控制 (3D ZMP + IK)")
-    p_wb.add_argument("--steps", type=int, default=4)
-
-    p_foc = sub.add_parser("foc", help="FOC + SVPWM + 硬件自动关机链时序验证")
-    p_hand = sub.add_parser("hand", help="G11 灵巧手设计决策矩阵")
-
-    p_real = sub.add_parser("real", help="真机闭环 (Sim-to-Real 最后一公里)")
-    p_real.add_argument("--transport", default="mock",
-                        choices=["mock", "socketcan", "serial"])
-    p_real.add_argument("--steps", type=int, default=60)
-
-    p_bench = sub.add_parser("bench", help="VLA 推理延迟基准 (roofline)")
-    p_bench.add_argument("--size", default="vla_tiny",
-                         choices=["vla_tiny", "vla_small", "vla_base", "vla_large"])
-    p_bench.add_argument("--platform", default="jetson_orin_nx_16gb",
-                         choices=["jetson_orin_nx_16gb", "jetson_orin_nano",
-                                  "jetson_agx_orin", "rk3588", "generic_arm_cpu"])
-    p_bench.add_argument("--precision", default="int8", choices=["int8", "fp16", "fp32"])
-
-    p_cert = sub.add_parser("cert", help="G10 安全认证证据包 (SIL/PFH/RTM)")
-    p_cert.add_argument("--md", default=None, help="导出 Markdown 证据包到该路径")
-
-    p_ll = sub.add_parser("lifelong", help="G12 终身学习 (EWC + 回放)")
-
-    p_train = sub.add_parser("train", help="训练管线自检 (BC/PPO/SAC/扩散)")
-    p_train.add_argument("--algo", default="bc",
-                         choices=["bc", "ppo", "sac", "diffusion"])
-    p_train.add_argument("--iters", type=int, default=None,
-                         help="省略时按算法取已标定的默认规模")
-    p_train.add_argument("--episodes", type=int, default=10)
-
-    p_gui = sub.add_parser("gui", help="L7 运行台 (零依赖 Web 仪表盘)")
-    p_gui.add_argument("--port", type=int, default=8765)
-    p_gui.add_argument("--once", action="store_true",
-                       help="只跑自检 (起服务→拉 API→关服务), 不常驻")
-
+    # ★ 启动时读全局注册表构建 parser —— 命令的唯一真源
+    ap = build_parser(prog="embodied-audit", description="EmbodiedAI 统一 CLI")
     ns = ap.parse_args(argv)
-    cmds = {"audit": cmd_audit, "contracts": cmd_contracts, "safety": cmd_safety,
-            "couple": cmd_couple, "dr": cmd_dr, "sim": cmd_sim, "sim2real": cmd_sim2real,
-            "biped": cmd_biped, "nanogpt": cmd_nanogpt, "platform": cmd_platform,
-            "verify": cmd_verify,
-            # v0.7
-            "soft": cmd_soft, "wholebody": cmd_wholebody, "foc": cmd_foc,
-            "hand": cmd_hand, "real": cmd_real, "bench": cmd_bench,
-            "cert": cmd_cert, "lifelong": cmd_lifelong, "train": cmd_train,
-            "gui": cmd_gui}
-    return cmds[ns.cmd](ns)
+    return CLI_REGISTRY[ns.cmd].handler(ns)
 
 
 if __name__ == "__main__":

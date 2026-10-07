@@ -101,8 +101,24 @@ if HAS_TORCH:
                 if ds is None:
                     continue
                 losses = []
+                # C1 修复 (2026-10-08): 兼容 torch DataLoader。
+                #   原代码 `ds.get_batch(...) if hasattr(ds, "get_batch") else None`
+                #   对 DataLoader 判否 → batch=None → break → losses 空 →
+                #   sum([])/max(0,1) = **0.0**, 于是"loss 完美"是假的 —
+                #   实际一个 batch 都没跑。静默错误, 与 block_size 同型。
+                if hasattr(ds, "get_batch"):
+                    def _next_batch(_ds=ds):
+                        return _ds.get_batch(self.cfg.batch_size)
+                else:
+                    _it = iter(ds)          # DataLoader / 任意可迭代对象
+
+                    def _next_batch(_i=_it):
+                        try:
+                            return next(_i)
+                        except StopIteration:
+                            return None
                 for _ in range(iters):
-                    batch = ds.get_batch(self.cfg.batch_size) if hasattr(ds, "get_batch") else None
+                    batch = _next_batch()
                     if batch is None:
                         break
                     frames, lang, state, action_gt = batch
@@ -113,7 +129,16 @@ if HAS_TORCH:
                     with torch.amp.autocast("cuda", enabled=self.cfg.use_mixed_precision):
                         _, loss = self.model(frames, lang, state, action_gt)
                     losses.append(loss.item() if loss is not None else 0.0)
-                out[split] = sum(losses) / max(len(losses), 1)
+                if not losses:
+                    # 一个 batch 都没取到 ≠ loss 为 0 — 必须可见, 否则训练"假装成功"
+                    import warnings
+                    warnings.warn(
+                        f"estimate_loss[{split}]: {iters} 次迭代未取到任何 batch "
+                        f"(数据源类型={type(ds).__name__}); 返回 NaN 而非 0.0, "
+                        f"避免把'没跑'误读成'loss 完美'。", stacklevel=2)
+                    out[split] = float("nan")
+                else:
+                    out[split] = sum(losses) / len(losses)
             self.model.train()
             return out
 
