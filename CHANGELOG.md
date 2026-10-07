@@ -57,6 +57,23 @@
 
 两个缺陷均由 `tests/test_selfcheck.py` 抓到（前者由"注册表可发现性"断言，后者由 CLI 子进程断言）。
 
+### 任务 B — 双轨缺口 G10 / G7 / G2（本轮完成）
+
+双轨机制（G6 建立）在本轮承担了三个"建模/算法型"缺口的修复，每个都有**可证伪的 oracle**：
+
+| 缺口 | 交付 | oracle（诚实标注） | 实测 |
+|---|---|---|---|
+| **G10** 电机缺 Ke/flux/Ld/Lq/Rs | `hardware/motor_model.py`：`MotorSpec` 补全电磁参数 + `verify_motor_spec` 三方校验 | jar 的 motor-drive **不输出**这些字段 → 无 jar oracle；改用**契约 + 物理关系（Ke=pp·ψ，Kt=1.5·pp·ψ）+ FOC 侧既有值**三方对照 | 10 项校验全绿；Ke=0.0875 V·s/rad、Kt=0.13125 N·m/A |
+| **G7** DigitalTwin 仅阈值告警 | `hil/twin_fft.py`：Hann 窗 + `rfft` 功率谱 + 轴承四类特征频率（BPFO/BPFI/BSF/FTF）+ 谱峰显著度判别 | jar 无 digital-twin CLI → 无 oracle；改用**注入已知特征必识别 + 健康信号不误报**双向断言 | 健康不误报 ✅ / 注入 BPFO 被识别 ✅ / **阈值法漏检被实证** ✅ |
+| **G2** FOC ↔ MotorDrive 参数未对齐 | `hardware/foc_board_align.py`：解析 jar 板级实测输出 + 与 Python FOC 参数交叉校验，**不匹配进 mismatches（不静默）** | 可比项（电压/电流/器件/固件）**真对照 jar 实测**；控制参数与 FOC 侧自洽 + 离散约束 | 板级对齐 0 不匹配；**抓到并修正 FOCConfig 增益 0.014% 漂移** |
+
+**G2 抓到的真问题（修复记录）**：`FOCConfig.kp_d=1.106 / ki_d=1759.0` 是手填舍入值，与极点配置反算 (`Ld·ωc=1.105841` / `Rs·ωc=1759.2919`) 有 0.014%/0.017% 偏差 —— 属"两处参数各自维护"的典型漂移。已改为与公式精确自洽，消除真机调试时的隐患。
+
+**顺带修复的架构缺陷（与 cli_registry 空表同类）**：后端注册依赖 `hardware`/`hil` 被导入；只 `import adapters.edalab` 时**看不到任何 python 后端** → `resolve_backend` 抛错或误判"无 python 后端"。修法：`ensure_backends_registered()`（惰性导入注册模块，集中在 `available_backends()` 入口触发）。
+
+**新增**：CLI `twin` 命令（`--backend auto|jar|python`）、verify 项 `dual_track_gaps`、`tests/test_task_b_gaps.py` 22 项（含 6 项反证）。
+**回归**：pytest **419 passed** + verify **28/28 PASS**。
+
 ### jar ↔ 源码漂移治理（两层闸门）
 
 风险：jar 是冻结产物，原 EdaLab 源码演进不会自动同步 → 静默漂移。

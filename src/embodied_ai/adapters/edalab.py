@@ -243,8 +243,38 @@ def register_python_backend(name: str) -> Callable:
     return deco
 
 
+def ensure_backends_registered() -> None:
+    """确保所有 Python 后端已注册 (按需导入注册它们的模块)。
+
+    动机 (同类陷阱, 与 cli_registry 的空表一致): 后端在 `hardware/*` 等模块的
+    **模块级** `_register()` 里注册。只 `import adapters.edalab` 就查后端表 →
+    看到空表 → 误判"无 python 后端" → `resolve_backend` 抛错或静默回落。
+    本函数在任何后端查询前补一次导入, 使"注册"与"查询"解耦于导入顺序。
+
+    **必须用惰性导入** (函数内), 否则 edalab ↔ hardware 会在模块级形成循环。
+    """
+    global _backends_ensured
+    if _backends_ensured:
+        return
+    _backends_ensured = True
+    import importlib
+    import sys as _sys
+    # 注册后端的模块清单 (新增后端时在此追加 —— 与 CLI 注册表同理, 集中一处)
+    for mod in ("embodied_ai.hardware", "embodied_ai.hil"):
+        try:
+            if mod not in _sys.modules:
+                importlib.import_module(mod)
+        except Exception:  # noqa: BLE001
+            # 导入失败不应让能力查询崩溃 (该后端自然不可用), 但保留痕迹
+            pass
+
+
+_backends_ensured = False
+
+
 def available_backends(name: str) -> List[str]:
     """某能力当前可用的后端列表 (jar = CLI 已注册 / python = 已实现)。"""
+    ensure_backends_registered()
     out: List[str] = []
     if any(s["name"] == name for s in STAGE_REGISTRY):
         out.append("jar")

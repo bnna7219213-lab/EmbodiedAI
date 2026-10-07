@@ -254,7 +254,49 @@ def check_dexterous_hand() -> int:
     return 0
 
 
+def check_dual_track_gaps() -> int:
+    """G10/G7/G2 双轨缺口守护 (2026-10-08 任务 B)。
+
+    三项各自的可证伪断言:
+      G10 电机模型: Ke=pp·psi / Kt=1.5·pp·psi 物理自洽 + 契约三项一致 + 离散稳定
+      G7  频谱判别: 健康信号**不误报** 且 注入故障**被识别** (两条同时成立)
+      G2  板级对齐: jar 板级实测 ↔ Python FOC 参数 **零不匹配**
+    """
+    from .adapters.edalab import EdalabAdapter, available_backends
+
+    a = EdalabAdapter()
+    # 三个后端必须都已注册 (防止"只导入 adapters 看不到后端"的空表陷阱回归)
+    for cap in ("motor_model", "digital_twin", "foc_board_align"):
+        assert "python" in available_backends(cap), \
+            f"{cap} 无 python 后端 (后端未注册 — 检查 hardware/hil 包导入)"
+
+    g10 = a.run_capability("motor_model", backend="python")
+    assert g10.get("ok"), f"G10 电机模型校验失败: {g10.get('failed')}"
+    spec = g10["spec"]
+    assert spec["Ke_vs_per_rad"] == spec["pole_pairs"] * spec["psi_m_wb"], "Ke 物理关系不成立"
+
+    g7 = a.run_capability("digital_twin", backend="python")
+    assert g7.get("ok"), f"G7 频谱判别失败: {g7}"
+    assert not g7["healthy_detected_fault"], "G7 健康信号误报 (判别器恒真)"
+    assert g7["faulty_detected_fault"], "G7 注入故障未被识别 (判别器失效)"
+    assert g7["threshold_baseline"]["missed_early_fault"], \
+        "G7 应展示阈值法漏检 (否则看不出 FFT 的价值)"
+
+    g2 = a.run_capability("foc_board_align", backend="python")
+    assert g2.get("ok"), f"G2 板级对齐存在不匹配: {g2.get('mismatches')}"
+    return 0
+
+
 def check_real_robot() -> int:
+    """Sim-to-Real 最后一公里: mock 传输跑通闭环 + 安全闸门 + 延迟统计。"""
+    from .simulation.real_robot_env import real_robot_demo
+
+    r = real_robot_demo(steps=30)
+    assert r["ok"], f"真机闭环自检失败: {r}"
+    return 0
+
+
+
     """Sim-to-Real 最后一公里: mock 传输跑通闭环 + 安全闸门 + 延迟统计。"""
     from .simulation.real_robot_env import real_robot_demo
 
@@ -766,6 +808,7 @@ CHECKS: List[Tuple[str, Callable[[], int]]] = [
     ("vendor_jar_provenance", check_vendor_jar_provenance),  # v4 漂移治理 L1: jar 指纹溯源
     ("vla_block_size", check_vla_block_size),  # C1 (P0): 视觉截断 + Jetson 预算双守护
     ("afe_ind_frontend", check_afe_ind_frontend),  # Phase1: AFE-IND 触觉硬件前端移植守护
+    ("dual_track_gaps", check_dual_track_gaps),    # G10/G7/G2 双轨缺口守护
     ("cli_smoke", check_cli_smoke),
 ]
 

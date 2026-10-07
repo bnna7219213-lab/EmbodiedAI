@@ -373,6 +373,11 @@ embodied-audit cert   [--md docs/cert.md]  # G10 认证证据包
 embodied-audit lifelong                    # G12 终身学习
 embodied-audit gui    [--port 8765] [--once]   # L7 运行台
 
+# v0.8 双轨缺口 (Python 后端 + jar oracle 对照)
+embodied-audit twin   [--backend auto|jar|python]
+                              # G10 电机模型 / G7 频谱判别 / G2 FOC↔板级对齐
+embodied-audit selfcheck [--json]   # 单仓自足实证 (5 项断言)
+
 embodied-audit verify [--no-pytest]   # 一键全量自检, 退出码即结论
 ```
 

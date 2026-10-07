@@ -503,6 +503,54 @@ def cmd_wholebody(args):
     return 0 if ok else 1
 
 
+def cmd_twin(args):
+    """G10/G7/G2 双轨缺口自检: 电机模型 / 频谱判别 / FOC↔板级对齐。
+
+    三项均走双轨 `run_capability`（backend 可观测; jar 无对应能力时如实反映）。
+    """
+    from .adapters.edalab import EdalabAdapter, available_backends
+
+    console.banner("双轨缺口自检 (G10 电机模型 / G7 频谱判别 / G2 FOC↔板级对齐)")
+    a = EdalabAdapter()
+    caps = [("motor_model", "G10 电机模型 (Ke/flux/Ld/Lq/Rs)"),
+            ("digital_twin", "G7 频谱异常判别 (FFT vs 阈值)"),
+            ("foc_board_align", "G2 FOC ↔ MotorDrive 参数对齐")]
+    rc = 0
+    for cap, label in caps:
+        avail = available_backends(cap)
+        r = a.run_capability(cap, backend=getattr(args, "backend", "auto"))
+        status = r.get("status")
+        ok = bool(r.get("ok"))
+        rc |= 0 if ok else 1
+        console.emit(f"  [{('✅' if ok else '❌')}] {label}")
+        console.emit(f"        能力={cap}  可用后端={avail}  实走={r.get('backend')}  状态={status}")
+        if cap == "motor_model":
+            s = r.get("spec", {})
+            console.emit(f"        Ke={s.get('Ke_vs_per_rad'):.6f} V·s/rad  "
+                         f"Kt={s.get('Kt_nm_per_a'):.6f} N·m/A  Rs={s.get('Rs_ohm')}Ω")
+            console.emit(f"        校验 {len(r.get('checks', []))} 项, 失败 "
+                         f"{len(r.get('failed', []))}")
+        elif cap == "digital_twin":
+            console.emit(f"        健康误报={r.get('healthy_detected_fault')} "
+                         f"故障识别={r.get('faulty_detected_fault')} "
+                         f"命中={r.get('faulty_hits')}")
+            tb = r.get("threshold_baseline", {})
+            console.emit(f"        阈值法漏检早期故障={tb.get('missed_early_fault')}")
+        else:
+            b = {k: v for k, v in (r.get("board") or {}).items() if v is not None}
+            console.emit(f"        板级: {b.get('bus_voltage_v')}V/"
+                         f"{b.get('peak_current_a')}A {b.get('layers')}层 "
+                         f"{b.get('copper_oz')}oz MOSFET={b.get('mosfet')}")
+            mm = r.get("mismatches") or []
+            console.emit(f"        不匹配 {len(mm)} 项"
+                         + (f": {[m['check'] for m in mm]}" if mm else " (已对齐)"))
+        if r.get("note"):
+            console.emit(f"        注: {r['note'][:110]}")
+        console.emit("")
+    console.emit(f"汇总: {'全部通过 ✅' if rc == 0 else '存在不一致 ⚠'}")
+    return rc
+
+
 def cmd_foc(args):
     """优先级 (1): FOC + SVPWM + 自动关机链。"""
     console.banner("FOC 驱动 + SVPWM + 硬件自动关机链")
@@ -802,6 +850,13 @@ def _register_all() -> None:
       add_args=lambda p: p.add_argument("--md", default=None,
                                         help="导出 Markdown 证据包到该路径"),
       examples=["embodied-audit cert --md docs/cert.md"])(cmd_cert)
+    R("twin", "双轨缺口自检 (G10 电机模型 / G7 频谱判别 / G2 FOC↔板级对齐)",
+      group="硬件/EDA", since="v0.8",
+      add_args=lambda p: p.add_argument("--backend", default="auto",
+                                        choices=["auto", "jar", "python"],
+                                        help="后端路由 (auto 优先 jar, 无则 python)"),
+      examples=["embodied-audit twin",
+                "embodied-audit twin --backend python"])(cmd_twin)
 
     # ---------------- 仿真 ----------------
     R("sim", "仿真栈冒烟 (自动选择可用后端)", group="仿真", since="v0.5",
