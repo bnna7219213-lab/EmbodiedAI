@@ -1,0 +1,1852 @@
+{
+  "version": 2,
+  "name": "B1 攀岩腱驱动关节板 (TendonDrive-Climbing)",
+  "timestamp": 1791399656460,
+  "components": [
+    {
+      "instanceId": "inst_1",
+      "refDes": "J_PWR",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_j_pwr",
+        "type": "CONNECTOR",
+        "name": "电源输入 24V",
+        "value": 24,
+        "unit": "V",
+        "rating": 24,
+        "footprint": "TE_MATELOK_2P",
+        "description": "24V 桥臂供电输入 (>=19.2A)",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "pin1",
+            "name": "24V",
+            "dx": -30,
+            "dy": 0
+          },
+          {
+            "id": "pin2",
+            "name": "GND",
+            "dx": 30,
+            "dy": 0
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_2",
+      "refDes": "CBULK1",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_cbulk1",
+        "type": "CAPACITOR",
+        "name": "电解电容 470µF/35V",
+        "value": 0.00047,
+        "unit": "F",
+        "rating": 35,
+        "footprint": "RADIAL_10x16",
+        "description": "24V 输入储能",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "a",
+            "name": "+",
+            "dx": -30,
+            "dy": 0
+          },
+          {
+            "id": "b",
+            "name": "-",
+            "dx": 30,
+            "dy": 0
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_3",
+      "refDes": "CBULK2",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_cbulk2",
+        "type": "CAPACITOR",
+        "name": "MLCC 100nF/50V",
+        "value": 1e-07,
+        "unit": "F",
+        "rating": 50,
+        "footprint": "0805",
+        "description": "24V 高频去耦",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "a",
+            "name": "",
+            "dx": -30,
+            "dy": 0
+          },
+          {
+            "id": "b",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_4",
+      "refDes": "U_GATE",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_gate",
+        "type": "IC",
+        "name": "栅极驱动 DRV8301",
+        "value": 0,
+        "unit": "",
+        "rating": 60,
+        "footprint": "QFN48",
+        "description": "60V 半桥栅极驱动 2.3A",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "gh_a",
+            "name": "",
+            "dx": -40,
+            "dy": -20
+          },
+          {
+            "id": "gl_a",
+            "name": "",
+            "dx": -40,
+            "dy": -10
+          },
+          {
+            "id": "gh_b",
+            "name": "",
+            "dx": -40,
+            "dy": 0
+          },
+          {
+            "id": "gl_b",
+            "name": "",
+            "dx": -40,
+            "dy": 10
+          },
+          {
+            "id": "gh_c",
+            "name": "",
+            "dx": -40,
+            "dy": 20
+          },
+          {
+            "id": "gl_c",
+            "name": "",
+            "dx": -40,
+            "dy": 30
+          },
+          {
+            "id": "inha",
+            "name": "",
+            "dx": 40,
+            "dy": -20
+          },
+          {
+            "id": "inha",
+            "name": "",
+            "dx": 40,
+            "dy": -10
+          },
+          {
+            "id": "inhb",
+            "name": "",
+            "dx": 40,
+            "dy": 0
+          },
+          {
+            "id": "inhb_l",
+            "name": "",
+            "dx": 40,
+            "dy": 10
+          },
+          {
+            "id": "inhc",
+            "name": "",
+            "dx": 40,
+            "dy": 20
+          },
+          {
+            "id": "inhc_l",
+            "name": "",
+            "dx": 40,
+            "dy": 30
+          },
+          {
+            "id": "vdd",
+            "name": "",
+            "dx": 0,
+            "dy": -30
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 30
+          },
+          {
+            "id": "so1",
+            "name": "",
+            "dx": -40,
+            "dy": 40
+          },
+          {
+            "id": "so2",
+            "name": "",
+            "dx": -40,
+            "dy": 50
+          },
+          {
+            "id": "en_gate",
+            "name": "",
+            "dx": 40,
+            "dy": 40
+          },
+          {
+            "id": "dc_cal",
+            "name": "",
+            "dx": 40,
+            "dy": 50
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_5",
+      "refDes": "Q1",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_q1",
+        "type": "MOSFET",
+        "name": "MOSFET IRFS4410Z (A相上)",
+        "value": 0,
+        "unit": "",
+        "rating": 100,
+        "footprint": "TO-220-7P",
+        "description": "100V/80A N-MOSFET A相上桥臂",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "g",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "d",
+            "name": "",
+            "dx": -30,
+            "dy": 0
+          },
+          {
+            "id": "s",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "d2",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_6",
+      "refDes": "Q2",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_q2",
+        "type": "MOSFET",
+        "name": "MOSFET IRFS4410Z (A相下)",
+        "value": 0,
+        "unit": "",
+        "rating": 100,
+        "footprint": "TO-220-7P",
+        "description": "100V/80A N-MOSFET A相下桥臂",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "g",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "d",
+            "name": "",
+            "dx": -30,
+            "dy": 0
+          },
+          {
+            "id": "s",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "d2",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_7",
+      "refDes": "Q3",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_q3",
+        "type": "MOSFET",
+        "name": "MOSFET IRFS4410Z (B相上)",
+        "value": 0,
+        "unit": "",
+        "rating": 100,
+        "footprint": "TO-220-7P",
+        "description": "100V/80A N-MOSFET B相上桥臂",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "g",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "d",
+            "name": "",
+            "dx": -30,
+            "dy": 0
+          },
+          {
+            "id": "s",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "d2",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_8",
+      "refDes": "Q4",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_q4",
+        "type": "MOSFET",
+        "name": "MOSFET IRFS4410Z (B相下)",
+        "value": 0,
+        "unit": "",
+        "rating": 100,
+        "footprint": "TO-220-7P",
+        "description": "100V/80A N-MOSFET B相下桥臂",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "g",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "d",
+            "name": "",
+            "dx": -30,
+            "dy": 0
+          },
+          {
+            "id": "s",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "d2",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_9",
+      "refDes": "Q5",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_q5",
+        "type": "MOSFET",
+        "name": "MOSFET IRFS4410Z (C相上)",
+        "value": 0,
+        "unit": "",
+        "rating": 100,
+        "footprint": "TO-220-7P",
+        "description": "100V/80A N-MOSFET C相上桥臂",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "g",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "d",
+            "name": "",
+            "dx": -30,
+            "dy": 0
+          },
+          {
+            "id": "s",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "d2",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_10",
+      "refDes": "Q6",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_q6",
+        "type": "MOSFET",
+        "name": "MOSFET IRFS4410Z (C相下)",
+        "value": 0,
+        "unit": "",
+        "rating": 100,
+        "footprint": "TO-220-7P",
+        "description": "100V/80A N-MOSFET C相下桥臂",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "g",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "d",
+            "name": "",
+            "dx": -30,
+            "dy": 0
+          },
+          {
+            "id": "s",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "d2",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_11",
+      "refDes": "U_CS1",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_cs1",
+        "type": "IC",
+        "name": "电流检测 INA240A (A相)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "MSOP10",
+        "description": "双向电流检测 A相",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "in+",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "in-",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "out",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -20
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 20
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_12",
+      "refDes": "U_CS2",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_cs2",
+        "type": "IC",
+        "name": "电流检测 INA240A (B相)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "MSOP10",
+        "description": "双向电流检测 B相",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "in+",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "in-",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "out",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -20
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 20
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_13",
+      "refDes": "U_MCU",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_mcu",
+        "type": "IC",
+        "name": "主控 STM32G474VET6",
+        "value": 0,
+        "unit": "",
+        "rating": 3.3,
+        "footprint": "LQFP100",
+        "description": "Cortex-M4 170MHz FOC 电机控制 MCU",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "pa0",
+            "name": "",
+            "dx": -50,
+            "dy": -30
+          },
+          {
+            "id": "pa1",
+            "name": "",
+            "dx": -50,
+            "dy": -20
+          },
+          {
+            "id": "pa2",
+            "name": "",
+            "dx": -50,
+            "dy": -10
+          },
+          {
+            "id": "pa3",
+            "name": "",
+            "dx": -50,
+            "dy": 0
+          },
+          {
+            "id": "pa4",
+            "name": "",
+            "dx": -50,
+            "dy": 10
+          },
+          {
+            "id": "pa5",
+            "name": "",
+            "dx": -50,
+            "dy": 20
+          },
+          {
+            "id": "pa6",
+            "name": "",
+            "dx": -50,
+            "dy": 30
+          },
+          {
+            "id": "pa7",
+            "name": "",
+            "dx": -50,
+            "dy": 40
+          },
+          {
+            "id": "pb6",
+            "name": "",
+            "dx": 50,
+            "dy": -30
+          },
+          {
+            "id": "pb7",
+            "name": "",
+            "dx": 50,
+            "dy": -20
+          },
+          {
+            "id": "pb8_can_rx",
+            "name": "",
+            "dx": 50,
+            "dy": -10
+          },
+          {
+            "id": "pb9_can_tx",
+            "name": "",
+            "dx": 50,
+            "dy": 0
+          },
+          {
+            "id": "vdd",
+            "name": "",
+            "dx": 0,
+            "dy": -40
+          },
+          {
+            "id": "vss",
+            "name": "",
+            "dx": 0,
+            "dy": 40
+          },
+          {
+            "id": "nrst",
+            "name": "",
+            "dx": 0,
+            "dy": -50
+          },
+          {
+            "id": "boot0",
+            "name": "",
+            "dx": 0,
+            "dy": 50
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_14",
+      "refDes": "U_CAN",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_can",
+        "type": "IC",
+        "name": "CAN-FD 收发器 TCAN1043A-Q1",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "SOIC14",
+        "description": "CAN-FD 5Mbps 车规收发器",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "canh",
+            "name": "",
+            "dx": -30,
+            "dy": -15
+          },
+          {
+            "id": "canl",
+            "name": "",
+            "dx": -30,
+            "dy": 15
+          },
+          {
+            "id": "txd",
+            "name": "",
+            "dx": 30,
+            "dy": -15
+          },
+          {
+            "id": "rxd",
+            "name": "",
+            "dx": 30,
+            "dy": 15
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -25
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 25
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_15",
+      "refDes": "U_ENC",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_enc",
+        "type": "IC",
+        "name": "磁性编码器 AS5048A",
+        "value": 0,
+        "unit": "",
+        "rating": 3.3,
+        "footprint": "TSSOP14",
+        "description": "14-bit 绝对位置磁编码器",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "mosi",
+            "name": "",
+            "dx": -30,
+            "dy": -20
+          },
+          {
+            "id": "miso",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "sclk",
+            "name": "",
+            "dx": -30,
+            "dy": 0
+          },
+          {
+            "id": "csn",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "vdd",
+            "name": "",
+            "dx": 30,
+            "dy": -15
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 30,
+            "dy": 15
+          },
+          {
+            "id": "a",
+            "name": "",
+            "dx": -30,
+            "dy": 20
+          },
+          {
+            "id": "b",
+            "name": "",
+            "dx": -30,
+            "dy": 30
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_16",
+      "refDes": "U_LC0",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_lc0",
+        "type": "IC",
+        "name": "仪表放大器 AD8422 (张力检测 CH0)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "SOIC8",
+        "description": "腱张力应变片仪表放大 CH0",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "in+",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "in-",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "out",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -20
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 20
+          },
+          {
+            "id": "ref",
+            "name": "",
+            "dx": 30,
+            "dy": 20
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_17",
+      "refDes": "U_LC1",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_lc1",
+        "type": "IC",
+        "name": "仪表放大器 AD8422 (张力检测 CH1)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "SOIC8",
+        "description": "腱张力应变片仪表放大 CH1",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "in+",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "in-",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "out",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -20
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 20
+          },
+          {
+            "id": "ref",
+            "name": "",
+            "dx": 30,
+            "dy": 20
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_18",
+      "refDes": "U_LC2",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_lc2",
+        "type": "IC",
+        "name": "仪表放大器 AD8422 (张力检测 CH2)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "SOIC8",
+        "description": "腱张力应变片仪表放大 CH2",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "in+",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "in-",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "out",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -20
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 20
+          },
+          {
+            "id": "ref",
+            "name": "",
+            "dx": 30,
+            "dy": 20
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_19",
+      "refDes": "U_LC3",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_lc3",
+        "type": "IC",
+        "name": "仪表放大器 AD8422 (张力检测 CH3)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "SOIC8",
+        "description": "腱张力应变片仪表放大 CH3",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "in+",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "in-",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "out",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -20
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 20
+          },
+          {
+            "id": "ref",
+            "name": "",
+            "dx": 30,
+            "dy": 20
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_20",
+      "refDes": "U_LC4",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_lc4",
+        "type": "IC",
+        "name": "仪表放大器 AD8422 (张力检测 CH4)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "SOIC8",
+        "description": "腱张力应变片仪表放大 CH4",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "in+",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "in-",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "out",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -20
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 20
+          },
+          {
+            "id": "ref",
+            "name": "",
+            "dx": 30,
+            "dy": 20
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_21",
+      "refDes": "U_LC5",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_lc5",
+        "type": "IC",
+        "name": "仪表放大器 AD8422 (张力检测 CH5)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "SOIC8",
+        "description": "腱张力应变片仪表放大 CH5",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "in+",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "in-",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "out",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -20
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 20
+          },
+          {
+            "id": "ref",
+            "name": "",
+            "dx": 30,
+            "dy": 20
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_22",
+      "refDes": "U_LC6",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_lc6",
+        "type": "IC",
+        "name": "仪表放大器 AD8422 (张力检测 CH6)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "SOIC8",
+        "description": "腱张力应变片仪表放大 CH6",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "in+",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "in-",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "out",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -20
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 20
+          },
+          {
+            "id": "ref",
+            "name": "",
+            "dx": 30,
+            "dy": 20
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_23",
+      "refDes": "U_LC7",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_u_lc7",
+        "type": "IC",
+        "name": "仪表放大器 AD8422 (张力检测 CH7)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "SOIC8",
+        "description": "腱张力应变片仪表放大 CH7",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "in+",
+            "name": "",
+            "dx": -30,
+            "dy": -10
+          },
+          {
+            "id": "in-",
+            "name": "",
+            "dx": -30,
+            "dy": 10
+          },
+          {
+            "id": "out",
+            "name": "",
+            "dx": 30,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": 0,
+            "dy": -20
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": 0,
+            "dy": 20
+          },
+          {
+            "id": "ref",
+            "name": "",
+            "dx": 30,
+            "dy": 20
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_24",
+      "refDes": "J_MOT",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_j_mot",
+        "type": "CONNECTOR",
+        "name": "电机相 UVW 输出",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "JST_B3P-VH",
+        "description": "电机三相 UVW 输出 (绑腱轮)",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "u",
+            "name": "U",
+            "dx": -20,
+            "dy": -15
+          },
+          {
+            "id": "v",
+            "name": "V",
+            "dx": -20,
+            "dy": 0
+          },
+          {
+            "id": "w",
+            "name": "W",
+            "dx": -20,
+            "dy": 15
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_25",
+      "refDes": "J_CAN",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_j_can",
+        "type": "CONNECTOR",
+        "name": "CAN-FD 总线",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "JST_B4P-VH",
+        "description": "CAN-FD 5Mbps 总线接口",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "canh",
+            "name": "",
+            "dx": -20,
+            "dy": -15
+          },
+          {
+            "id": "canl",
+            "name": "",
+            "dx": -20,
+            "dy": 0
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": -20,
+            "dy": 15
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": -20,
+            "dy": 30
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_26",
+      "refDes": "J_ENC",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_j_enc",
+        "type": "CONNECTOR",
+        "name": "编码器接口 (电机/腱双端)",
+        "value": 0,
+        "unit": "",
+        "rating": 0,
+        "footprint": "JST_B6P-VH",
+        "description": "19-bit 双端绝对编码器接口",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "a",
+            "name": "",
+            "dx": -20,
+            "dy": -25
+          },
+          {
+            "id": "b",
+            "name": "",
+            "dx": -20,
+            "dy": -15
+          },
+          {
+            "id": "z",
+            "name": "",
+            "dx": -20,
+            "dy": -5
+          },
+          {
+            "id": "vcc",
+            "name": "",
+            "dx": -20,
+            "dy": 5
+          },
+          {
+            "id": "gnd",
+            "name": "",
+            "dx": -20,
+            "dy": 15
+          },
+          {
+            "id": "data",
+            "name": "",
+            "dx": -20,
+            "dy": 25
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    },
+    {
+      "instanceId": "inst_27",
+      "refDes": "GND1",
+      "x": 60,
+      "y": 60,
+      "rotation": 0,
+      "spec": {
+        "id": "lib_custom_gnd1",
+        "type": "GROUND",
+        "name": "系统地",
+        "value": 0,
+        "unit": "V",
+        "rating": 0,
+        "footprint": "-",
+        "description": "系统地平面",
+        "custom": true,
+        "params": {},
+        "pins": [
+          {
+            "id": "gnd",
+            "name": "GND",
+            "dx": 0,
+            "dy": 0
+          }
+        ]
+      },
+      "subcircuitId": "",
+      "portIndex": -1
+    }
+  ],
+  "wires": [
+    {
+      "id": "wire_1",
+      "fromComp": "inst_1",
+      "fromPin": "pin1",
+      "toComp": "inst_2",
+      "toPin": "a"
+    },
+    {
+      "id": "wire_2",
+      "fromComp": "inst_1",
+      "fromPin": "pin1",
+      "toComp": "inst_3",
+      "toPin": "a"
+    },
+    {
+      "id": "wire_3",
+      "fromComp": "inst_2",
+      "fromPin": "a",
+      "toComp": "inst_5",
+      "toPin": "d"
+    },
+    {
+      "id": "wire_4",
+      "fromComp": "inst_2",
+      "fromPin": "a",
+      "toComp": "inst_7",
+      "toPin": "d"
+    },
+    {
+      "id": "wire_5",
+      "fromComp": "inst_2",
+      "fromPin": "a",
+      "toComp": "inst_9",
+      "toPin": "d"
+    },
+    {
+      "id": "wire_6",
+      "fromComp": "inst_4",
+      "fromPin": "gh_a",
+      "toComp": "inst_5",
+      "toPin": "g"
+    },
+    {
+      "id": "wire_7",
+      "fromComp": "inst_4",
+      "fromPin": "gl_a",
+      "toComp": "inst_6",
+      "toPin": "g"
+    },
+    {
+      "id": "wire_8",
+      "fromComp": "inst_4",
+      "fromPin": "gh_b",
+      "toComp": "inst_7",
+      "toPin": "g"
+    },
+    {
+      "id": "wire_9",
+      "fromComp": "inst_4",
+      "fromPin": "gl_b",
+      "toComp": "inst_8",
+      "toPin": "g"
+    },
+    {
+      "id": "wire_10",
+      "fromComp": "inst_4",
+      "fromPin": "gh_c",
+      "toComp": "inst_9",
+      "toPin": "g"
+    },
+    {
+      "id": "wire_11",
+      "fromComp": "inst_4",
+      "fromPin": "gl_c",
+      "toComp": "inst_10",
+      "toPin": "g"
+    },
+    {
+      "id": "wire_12",
+      "fromComp": "inst_5",
+      "fromPin": "s",
+      "toComp": "inst_6",
+      "toPin": "d"
+    },
+    {
+      "id": "wire_13",
+      "fromComp": "inst_5",
+      "fromPin": "s",
+      "toComp": "inst_24",
+      "toPin": "u"
+    },
+    {
+      "id": "wire_14",
+      "fromComp": "inst_7",
+      "fromPin": "s",
+      "toComp": "inst_8",
+      "toPin": "d"
+    },
+    {
+      "id": "wire_15",
+      "fromComp": "inst_7",
+      "fromPin": "s",
+      "toComp": "inst_24",
+      "toPin": "v"
+    },
+    {
+      "id": "wire_16",
+      "fromComp": "inst_9",
+      "fromPin": "s",
+      "toComp": "inst_10",
+      "toPin": "d"
+    },
+    {
+      "id": "wire_17",
+      "fromComp": "inst_9",
+      "fromPin": "s",
+      "toComp": "inst_24",
+      "toPin": "w"
+    },
+    {
+      "id": "wire_18",
+      "fromComp": "inst_6",
+      "fromPin": "s",
+      "toComp": "inst_11",
+      "toPin": "in+"
+    },
+    {
+      "id": "wire_19",
+      "fromComp": "inst_8",
+      "fromPin": "s",
+      "toComp": "inst_12",
+      "toPin": "in+"
+    },
+    {
+      "id": "wire_20",
+      "fromComp": "inst_13",
+      "fromPin": "pa6",
+      "toComp": "inst_4",
+      "toPin": "inha"
+    },
+    {
+      "id": "wire_21",
+      "fromComp": "inst_13",
+      "fromPin": "pa7",
+      "toComp": "inst_4",
+      "toPin": "inha"
+    },
+    {
+      "id": "wire_22",
+      "fromComp": "inst_13",
+      "fromPin": "pa0",
+      "toComp": "inst_4",
+      "toPin": "inhb"
+    },
+    {
+      "id": "wire_23",
+      "fromComp": "inst_13",
+      "fromPin": "pa1",
+      "toComp": "inst_4",
+      "toPin": "inhb_l"
+    },
+    {
+      "id": "wire_24",
+      "fromComp": "inst_13",
+      "fromPin": "pa2",
+      "toComp": "inst_4",
+      "toPin": "inhc"
+    },
+    {
+      "id": "wire_25",
+      "fromComp": "inst_13",
+      "fromPin": "pa3",
+      "toComp": "inst_4",
+      "toPin": "inhc_l"
+    },
+    {
+      "id": "wire_26",
+      "fromComp": "inst_13",
+      "fromPin": "pb8_can_rx",
+      "toComp": "inst_14",
+      "toPin": "rxd"
+    },
+    {
+      "id": "wire_27",
+      "fromComp": "inst_13",
+      "fromPin": "pb9_can_tx",
+      "toComp": "inst_14",
+      "toPin": "txd"
+    },
+    {
+      "id": "wire_28",
+      "fromComp": "inst_14",
+      "fromPin": "canh",
+      "toComp": "inst_25",
+      "toPin": "canh"
+    },
+    {
+      "id": "wire_29",
+      "fromComp": "inst_14",
+      "fromPin": "canl",
+      "toComp": "inst_25",
+      "toPin": "canl"
+    },
+    {
+      "id": "wire_30",
+      "fromComp": "inst_13",
+      "fromPin": "pa4",
+      "toComp": "inst_15",
+      "toPin": "csn"
+    },
+    {
+      "id": "wire_31",
+      "fromComp": "inst_13",
+      "fromPin": "pa5",
+      "toComp": "inst_15",
+      "toPin": "sclk"
+    },
+    {
+      "id": "wire_32",
+      "fromComp": "inst_15",
+      "fromPin": "a",
+      "toComp": "inst_26",
+      "toPin": "a"
+    },
+    {
+      "id": "wire_33",
+      "fromComp": "inst_15",
+      "fromPin": "b",
+      "toComp": "inst_26",
+      "toPin": "b"
+    },
+    {
+      "id": "wire_34",
+      "fromComp": "inst_11",
+      "fromPin": "out",
+      "toComp": "inst_13",
+      "toPin": "pa0"
+    },
+    {
+      "id": "wire_35",
+      "fromComp": "inst_12",
+      "fromPin": "out",
+      "toComp": "inst_13",
+      "toPin": "pa1"
+    },
+    {
+      "id": "wire_36",
+      "fromComp": "inst_1",
+      "fromPin": "pin2",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    },
+    {
+      "id": "wire_37",
+      "fromComp": "inst_2",
+      "fromPin": "b",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    },
+    {
+      "id": "wire_38",
+      "fromComp": "inst_3",
+      "fromPin": "b",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    },
+    {
+      "id": "wire_39",
+      "fromComp": "inst_4",
+      "fromPin": "gnd",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    },
+    {
+      "id": "wire_40",
+      "fromComp": "inst_11",
+      "fromPin": "gnd",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    },
+    {
+      "id": "wire_41",
+      "fromComp": "inst_12",
+      "fromPin": "gnd",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    },
+    {
+      "id": "wire_42",
+      "fromComp": "inst_13",
+      "fromPin": "vss",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    },
+    {
+      "id": "wire_43",
+      "fromComp": "inst_14",
+      "fromPin": "gnd",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    },
+    {
+      "id": "wire_44",
+      "fromComp": "inst_15",
+      "fromPin": "gnd",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    },
+    {
+      "id": "wire_45",
+      "fromComp": "inst_25",
+      "fromPin": "gnd",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    },
+    {
+      "id": "wire_46",
+      "fromComp": "inst_26",
+      "fromPin": "gnd",
+      "toComp": "inst_27",
+      "toPin": "gnd"
+    }
+  ]
+}

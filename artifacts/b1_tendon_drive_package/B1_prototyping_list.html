@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>B1 打样清单 — 攀岩腱驱动关节板</title>
+<style>
+body { font-family: 'Microsoft YaHei','SimHei',sans-serif; max-width:960px; margin:0 auto; padding:20px; color:#222; }
+h1 { color:#1a5276; border-bottom:3px solid #1a5276; padding-bottom:10px; }
+h2 { color:#2c3e50; margin-top:30px; }
+table { border-collapse:collapse; width:100%; margin:10px 0; }
+th, td { border:1px solid #ccc; padding:8px 12px; text-align:left; }
+th { background:#1a5276; color:white; }
+tr:nth-child(even) { background:#f8f9fa; }
+.spec-grid { display:grid; grid-template-columns:200px 1fr; gap:6px; margin:10px 0; }
+.spec-grid b { background:#eaf2f8; padding:4px 10px; }
+.spec-grid span { padding:4px 10px; }
+.warning { background:#fdf2e9; border-left:4px solid #e67e22; padding:10px 16px; margin:10px 0; }
+.critical { background:#fdedec; border-left:4px solid #e74c3c; padding:10px 16px; margin:10px 0; }
+code { background:#f0f0f0; padding:1px 5px; border-radius:3px; font-size:13px; }
+ol li, ul li { margin:4px 0; }
+</style>
+</head>
+<body>
+<h1>🧗 B1 打样清单 — 攀岩腱驱动关节板</h1>
+<p><strong>文档版本</strong>: v1.0 | <strong>生成时间</strong>: 2026-10-08 03:00:59 | <strong>来源</strong>: hw_requirements.yaml climbing.motor_drive_tendon</p>
+
+<div class="critical">
+<strong>⚠ 阶段声明</strong>: 本文件包由参数化设计引擎自动生成，用于<strong>仿真验证</strong>。
+打样前必须由 Layout 工程师完成真实 PCB Layout (Altium/KiCad)，
+<strong>不可直接用自动布局文件投板生产</strong>。
+</div>
+
+<h2>一、板规格参数</h2>
+<div class="spec-grid">
+<b>板名</b><span>B1 — 攀岩腱驱动关节板 (TendonDrive-Climbing)</span>
+<b>产品系列</b><span>EmbodiedAI SynapticForge</span>
+<b>板种</b><span>tendon_drive_joint_board (区别于整机母线板)</span>
+<b>桥臂电压</b><span>24V (48V 母线经通道级 buck)</span>
+<b>桥臂峰值电流</b><span>19.2A (= 8ch × 4A × 0.6 同时率)</span>
+<b>桥臂峰值功率</b><span>460.8W (24V × 19.2A)</span>
+<b>母线峰值</b><span>30A (含裕量)</span>
+<b>层数</b><span>4 层 (2oz铜厚)</span>
+<b>PCB 尺寸</b><span>~55.4mm × 44.3mm (自动布局估算)</span>
+<b>最小线宽/间距</b><span>0.25mm / 0.2mm</span>
+<b>爬电距离</b><span>3.0mm (30V+)</span>
+<b>基板厚度</b><span>1.6mm</span>
+<b>板面积</b><span>≤ 2500 mm²</span>
+<b>防护等级</b><span>IP54 (墙面汗/尘环境)</span>
+<b>工作温度</b><span>-10 ~ +60°C</span>
+<b>最大 PCB 加速度</b><span>20g (dyno 捕获冲击上限)</span>
+</div>
+
+<h2>二、关键器件清单</h2>
+<table>
+<tr><th>位号</th><th>型号</th><th>封装</th><th>功能</th><th>特殊要求</th></tr>
+<tr><td>U_MCU</td><td>STM32G474VET6</td><td>LQFP100</td><td>主控 MCU (Cortex-M4 170MHz)</td><td>FPU + Cordic + FMAC</td></tr>
+<tr><td>U_GATE</td><td>DRV8301</td><td>QFN48</td><td>栅极驱动 半桥 ×3</td><td>60V / 2.3A 驱动</td></tr>
+<tr><td>Q1~Q6</td><td>IRFS4410Z</td><td>TO-220-7P</td><td>N-MOSFET 上下桥臂 ×3相</td><td>100V/80A 降额选用</td></tr>
+<tr><td>U_CS1/2</td><td>INA240AIDGSR</td><td>MSOP10</td><td>双向电流检测</td><td>PWM 抑制 80V 共模</td></tr>
+<tr><td>U_CAN</td><td>TCAN1043A-Q1</td><td>SOIC14</td><td>CAN-FD 收发器</td><td>车规 Grade 0</td></tr>
+<tr><td>U_ENC</td><td>AS5048A</td><td>TSSOP14</td><td>磁性编码器</td><td>14-bit 绝对值</td></tr>
+<tr><td>U_LC0~7</td><td>AD8422</td><td>SOIC8</td><td>腱张力仪表放大 ×8</td><td>低噪声 高 CMRR</td></tr>
+</table>
+
+<div class="warning">
+<strong>⚠ 已知的 Gaps / 打样前必查</strong>:
+<ul>
+<li><strong>编码器位数不一致</strong>: 契约要求 19-bit, 元件库 AS5048A 仅 14-bit — 需换 TLI5012B</li>
+<li><strong>热裕量</strong>: 单桥模型估算 51.1°C, 实际需 SiC 模型 + 双脉冲测试修正</li>
+<li><strong>无真实 Layout</strong>: 自动布局器生成, 未做 SI/PI/EMC 仿真</li>
+<li><strong>腱张力检测未仿真</strong>: 8ch AD8422 走线未做噪声/屏蔽仿真</li>
+</ul>
+</div>
+
+<h2>三、控制参数</h2>
+<div class="spec-grid">
+<b>控制模式</b><span>FOC_SENSORED (磁场定向控制)</span>
+<b>PWM 载波频率</b><span>20kHz</span>
+<b>电流环频率</b><span>10kHz (100µs 周期)</span>
+<b>目标下发频率</b><span>200Hz (5ms 周期)</span>
+<b>编码器类型</b><span>absolute_19bit (电机端 + 腱端双编码器)</span>
+<b>编码器通道</b><span>16 (8 伺服电机端 + 8 腱端)</span>
+<b>总线</b><span>CAN-FD 5Mbps, 8 节点</span>
+<b>硬件过流</b><span>< 1μs 独立比较器 (8ch)</span>
+<b>过温关断</b><span>105°C</span>
+<b>看门狗通信丢失</b><span>50ms</span>
+<b>停止类别</b><span>CAT_0_IMMEDIATE (立即断电)</span>
+<b>跌落保护</b><span>true (握持失效即断电锁止)</span>
+</div>
+
+<h2>四、制造文件清单</h2>
+<table>
+<tr><th>文件名</th><th>状态</th><th>说明</th></tr>
+<tr><td><code>B1_tendon_drive.circuit.json</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive_pcb.svg</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive_pcb.pcb.json</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive_pcb.dxf</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive_pcb.board_outline.gbr</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive_pcb.bottom_copper.gbr</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive_pcb.copper_pour.gbr</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive_pcb.top_copper.gbr</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive_pcb.top_silk.gbr</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive_schematic.svg</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive.cir</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive.c</code></td><td>✅ 已生成</td></tr><tr><td><code>B1_tendon_drive_bom.csv</code></td><td>✅ 已生成</td></tr>
+</table>
+
+<h2>五、推荐打样流程</h2>
+<ol>
+<li><strong>Layout 工程化</strong> — Altium Designer / KiCad 真实 PCB Layout (4层/2oz/阻抗控制)</li>
+<li><strong>SI/PI/EMC 仿真</strong> — 信号完整性、电源完整性、EMC 仿真</li>
+<li><strong>设计评审</strong> — 对照清单检查车规级 CAN 收发器等特殊器件</li>
+<li><strong>投板打样</strong> — 嘉立创/华秋 (4层 ~50元/5片, 2oz铜厚)</li>
+<li><strong>钢网</strong> — QFN48 (U_GATE) 必须开刻钢网</li>
+<li><strong>SMT 贴片</strong> — TO-220-7P (MOSFET) 手工焊, 其他回流焊</li>
+<li><strong>FCT/ICT 测试</strong> — 100% ICT 飞针 + FCT 功能测试 (固件自动从 foc-firmware 生成)</li>
+<li><strong>实机装配</strong> — 腱伺服电机 ×4 + 拮抗 VSA 电机 ×4 + 8ch 张力传感器</li>
+<li><strong>HIL 联调</strong> — 接入 HIL 半实物仿真, 验证 FOC 电流环 / PWM / 编码器反馈</li>
+</ol>
+
+<h2>六、认证要求</h2>
+<ul>
+<li>功能安全: ISO 13482 个人护理机器人, <strong>SIL 2</strong></li>
+<li>安全功能: STO (Safe Torque Off) < 1μs 硬件独立比较器</li>
+<li>爬电/电气间隙: 3.0mm (30V+)</li>
+<li>腱驱动安全: 握持失效 → 断电锁止 (drop_protection = true)</li>
+</ul>
+
+</body>
+</html>

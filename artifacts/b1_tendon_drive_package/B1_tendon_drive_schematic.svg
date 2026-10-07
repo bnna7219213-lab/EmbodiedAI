@@ -1,0 +1,356 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="220" height="200" viewBox="-50.0 -40.0 220.0 200.0">
+<rect x="-50.0" y="-40.0" width="220.0" height="200.0" fill="#ffffff"/>
+<g stroke="#eef0f3" stroke-width="1">
+<line x1="-44.0" y1="-40.0" x2="-44.0" y2="160.0"/>
+<line x1="-22.0" y1="-40.0" x2="-22.0" y2="160.0"/>
+<line x1="0.0" y1="-40.0" x2="0.0" y2="160.0"/>
+<line x1="22.0" y1="-40.0" x2="22.0" y2="160.0"/>
+<line x1="44.0" y1="-40.0" x2="44.0" y2="160.0"/>
+<line x1="66.0" y1="-40.0" x2="66.0" y2="160.0"/>
+<line x1="88.0" y1="-40.0" x2="88.0" y2="160.0"/>
+<line x1="110.0" y1="-40.0" x2="110.0" y2="160.0"/>
+<line x1="132.0" y1="-40.0" x2="132.0" y2="160.0"/>
+<line x1="154.0" y1="-40.0" x2="154.0" y2="160.0"/>
+<line x1="-50.0" y1="-22.0" x2="170.0" y2="-22.0"/>
+<line x1="-50.0" y1="0.0" x2="170.0" y2="0.0"/>
+<line x1="-50.0" y1="22.0" x2="170.0" y2="22.0"/>
+<line x1="-50.0" y1="44.0" x2="170.0" y2="44.0"/>
+<line x1="-50.0" y1="66.0" x2="170.0" y2="66.0"/>
+<line x1="-50.0" y1="88.0" x2="170.0" y2="88.0"/>
+<line x1="-50.0" y1="110.0" x2="170.0" y2="110.0"/>
+<line x1="-50.0" y1="132.0" x2="170.0" y2="132.0"/>
+<line x1="-50.0" y1="154.0" x2="170.0" y2="154.0"/>
+</g>
+
+<line x1="30.00" y1="60.00" x2="30.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="60.00" x2="30.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="60.00" x2="30.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="60.00" x2="30.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="60.00" x2="30.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="20.00" y1="40.00" x2="30.00" y2="50.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="20.00" y1="50.00" x2="30.00" y2="50.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="20.00" y1="60.00" x2="30.00" y2="50.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="20.00" y1="70.00" x2="30.00" y2="50.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="20.00" y1="80.00" x2="30.00" y2="50.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="20.00" y1="90.00" x2="30.00" y2="50.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="70.00" x2="30.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="70.00" x2="40.00" y2="45.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="70.00" x2="30.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="70.00" x2="40.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="70.00" x2="30.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="70.00" x2="40.00" y2="75.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="70.00" x2="30.00" y2="50.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="70.00" x2="30.00" y2="50.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="10.00" y1="90.00" x2="100.00" y2="40.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="10.00" y1="100.00" x2="100.00" y2="40.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="10.00" y1="30.00" x2="100.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="10.00" y1="40.00" x2="100.00" y2="70.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="10.00" y1="50.00" x2="100.00" y2="80.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="10.00" y1="60.00" x2="100.00" y2="90.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="110.00" y1="50.00" x2="90.00" y2="75.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="110.00" y1="60.00" x2="90.00" y2="45.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="45.00" x2="40.00" y2="45.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="75.00" x2="40.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="10.00" y1="70.00" x2="30.00" y2="70.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="10.00" y1="80.00" x2="30.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="80.00" x2="40.00" y2="35.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="30.00" y1="90.00" x2="40.00" y2="45.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="90.00" y1="60.00" x2="10.00" y2="30.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="90.00" y1="60.00" x2="10.00" y2="40.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="90.00" y1="60.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="90.00" y1="60.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="90.00" y1="60.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="60.00" y1="90.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="60.00" y1="80.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="60.00" y1="80.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="60.00" y1="100.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="60.00" y1="85.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="90.00" y1="75.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="40.00" y1="90.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<line x1="40.00" y1="75.00" x2="60.00" y2="60.00" stroke="#1f6feb" stroke-width="2" stroke-linecap="round"/>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">电源输入 24V</text>
+<circle cx="-30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">J_PWR</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">24V</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<line x1="-50" y1="0" x2="-8" y2="0" stroke="#222" stroke-width="2"/><line x1="8" y1="0" x2="50" y2="0" stroke="#222" stroke-width="2"/><line x1="-8" y1="-18" x2="-8" y2="18" stroke="#222" stroke-width="2.5"/><line x1="8" y1="-18" x2="8" y2="18" stroke="#222" stroke-width="2.5"/>
+<circle cx="-30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">CBULK1</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">470µF</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<line x1="-50" y1="0" x2="-8" y2="0" stroke="#222" stroke-width="2"/><line x1="8" y1="0" x2="50" y2="0" stroke="#222" stroke-width="2"/><line x1="-8" y1="-18" x2="-8" y2="18" stroke="#222" stroke-width="2.5"/><line x1="8" y1="-18" x2="8" y2="18" stroke="#222" stroke-width="2.5"/>
+<circle cx="-30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">CBULK2</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">100nF</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">栅极驱动 DRV8301</text>
+<circle cx="-40.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="-40.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-40.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-40.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="-40.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="-40.00" cy="30.00" r="3" fill="#1f6feb"/>
+<circle cx="40.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="40.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="40.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="40.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="40.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="40.00" cy="30.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-30.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="30.00" r="3" fill="#1f6feb"/>
+<circle cx="-40.00" cy="40.00" r="3" fill="#1f6feb"/>
+<circle cx="-40.00" cy="50.00" r="3" fill="#1f6feb"/>
+<circle cx="40.00" cy="40.00" r="3" fill="#1f6feb"/>
+<circle cx="40.00" cy="50.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_GATE</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">栅极驱动 DRV8301</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">MOSFET IRFS4410Z (A相上)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">Q1</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">MOSFET IRFS4410Z (A相上)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">MOSFET IRFS4410Z (A相下)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">Q2</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">MOSFET IRFS4410Z (A相下)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">MOSFET IRFS4410Z (B相上)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">Q3</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">MOSFET IRFS4410Z (B相上)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">MOSFET IRFS4410Z (B相下)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">Q4</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">MOSFET IRFS4410Z (B相下)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">MOSFET IRFS4410Z (C相上)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">Q5</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">MOSFET IRFS4410Z (C相上)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">MOSFET IRFS4410Z (C相下)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">Q6</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">MOSFET IRFS4410Z (C相下)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">电流检测 INA240A (A相)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="20.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_CS1</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">电流检测 INA240A (A相)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">电流检测 INA240A (B相)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="20.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_CS2</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">电流检测 INA240A (B相)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">主控 STM32G474VET6</text>
+<circle cx="-50.00" cy="-30.00" r="3" fill="#1f6feb"/>
+<circle cx="-50.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="-50.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-50.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-50.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="-50.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="-50.00" cy="30.00" r="3" fill="#1f6feb"/>
+<circle cx="-50.00" cy="40.00" r="3" fill="#1f6feb"/>
+<circle cx="50.00" cy="-30.00" r="3" fill="#1f6feb"/>
+<circle cx="50.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="50.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="50.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-40.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="40.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-50.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="50.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_MCU</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">主控 STM32G474VET6</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">CAN-FD 收发器 TCAN1043A-Q1</text>
+<circle cx="-30.00" cy="-15.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="15.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="-15.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="15.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-25.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="25.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_CAN</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">CAN-FD 收发器 TCAN1043A-Q1</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">磁性编码器 AS5048A</text>
+<circle cx="-30.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="-15.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="15.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="30.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_ENC</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">磁性编码器 AS5048A</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">仪表放大器 AD8422 (张力检测 CH0)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="20.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_LC0</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">仪表放大器 AD8422 (张力检测 CH0)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">仪表放大器 AD8422 (张力检测 CH1)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="20.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_LC1</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">仪表放大器 AD8422 (张力检测 CH1)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">仪表放大器 AD8422 (张力检测 CH2)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="20.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_LC2</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">仪表放大器 AD8422 (张力检测 CH2)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">仪表放大器 AD8422 (张力检测 CH3)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="20.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_LC3</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">仪表放大器 AD8422 (张力检测 CH3)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">仪表放大器 AD8422 (张力检测 CH4)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="20.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_LC4</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">仪表放大器 AD8422 (张力检测 CH4)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">仪表放大器 AD8422 (张力检测 CH5)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="20.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_LC5</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">仪表放大器 AD8422 (张力检测 CH5)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">仪表放大器 AD8422 (张力检测 CH6)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="20.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_LC6</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">仪表放大器 AD8422 (张力检测 CH6)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">仪表放大器 AD8422 (张力检测 CH7)</text>
+<circle cx="-30.00" cy="-10.00" r="3" fill="#1f6feb"/>
+<circle cx="-30.00" cy="10.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="-20.00" r="3" fill="#1f6feb"/>
+<circle cx="0.00" cy="20.00" r="3" fill="#1f6feb"/>
+<circle cx="30.00" cy="20.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">U_LC7</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">仪表放大器 AD8422 (张力检测 CH7)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">电机相 UVW 输出</text>
+<circle cx="-20.00" cy="-15.00" r="3" fill="#1f6feb"/>
+<circle cx="-20.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-20.00" cy="15.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">J_MOT</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">电机相 UVW 输出</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">CAN-FD 总线</text>
+<circle cx="-20.00" cy="-15.00" r="3" fill="#1f6feb"/>
+<circle cx="-20.00" cy="0.00" r="3" fill="#1f6feb"/>
+<circle cx="-20.00" cy="15.00" r="3" fill="#1f6feb"/>
+<circle cx="-20.00" cy="30.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">J_CAN</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">CAN-FD 总线</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<rect x="-30" y="-20" width="60" height="40" rx="4" fill="#fff" stroke="#222" stroke-width="2"/><text x="0" y="4" text-anchor="middle" font-family="monospace" font-size="9" fill="#444">编码器接口 (电机/腱双端)</text>
+<circle cx="-20.00" cy="-25.00" r="3" fill="#1f6feb"/>
+<circle cx="-20.00" cy="-15.00" r="3" fill="#1f6feb"/>
+<circle cx="-20.00" cy="-5.00" r="3" fill="#1f6feb"/>
+<circle cx="-20.00" cy="5.00" r="3" fill="#1f6feb"/>
+<circle cx="-20.00" cy="15.00" r="3" fill="#1f6feb"/>
+<circle cx="-20.00" cy="25.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">J_ENC</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">编码器接口 (电机/腱双端)</text>
+<g transform="translate(60.00,60.00) rotate(0)">
+<line x1="-50" y1="0" x2="0" y2="0" stroke="#222" stroke-width="2"/><line x1="0" y1="0" x2="0" y2="18" stroke="#222" stroke-width="2"/><line x1="-14" y1="18" x2="14" y2="18" stroke="#222" stroke-width="2"/><line x1="-9" y1="25" x2="9" y2="25" stroke="#222" stroke-width="2"/><line x1="-4" y1="32" x2="4" y2="32" stroke="#222" stroke-width="2"/>
+<circle cx="0.00" cy="0.00" r="3" fill="#1f6feb"/>
+</g>
+<text x="60.00" y="14.00" text-anchor="middle" font-family="monospace" font-size="13" fill="#222">GND1</text>
+<text x="60.00" y="112.00" text-anchor="middle" font-family="monospace" font-size="11" fill="#666">GND</text>
+</svg>
