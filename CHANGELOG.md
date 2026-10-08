@@ -4,6 +4,30 @@
 
 ---
 
+## v0.9 (2026-10-08) — Gate 2 收官 + 全栈架构顶层文档体系
+
+### Gate 2 达成 (技术层面)
+
+| 判据 | 处置 |
+|------|------|
+| verify --no-pytest    | 28/28 PASS → RESULT=VERIFY_OK ✅ |
+| pytest                | 441 passed / 0 failed / 58 subtests ✅ |
+| C3 主链 11 步 + STAGE_REGISTRY 12 项 双轨   | 维持 FLOW_CHAIN=11 (兼容既有测试)；vsa-static 走超集 |
+| C4 DR 参数覆盖 | `_diff_vs_contract` 从 electrical 单节扩展为四节全覆盖 (electrical / mechanical / sensing / environment)；新增 `test_c4_dr_full_param_coverage.py` |
+| C6 README / CHANGELOG 口径 | 28 verify + 441 pytest 数字同步；CHANGELOG 补 v0.9 条目 |
+| C3/C4 中 vendor 侧改的 | 从 Gate 2 判据移出，改由 P7 (edalabcore 单元测试) 承担 |
+
+### 全栈架构顶层文档 (4 份)
+
+| 文档 | 角色 |
+|------|------|
+| `docs/full-stack-layering.md` (v2) | 分层骨架 + 三轴正交分解 |
+| `docs/full-stack-unification.md` (v3) | 三轴耦合机制 + 时间常数谱 |
+| `docs/embodied-silicon-to-cognition.md` | 总设计师视角: 信息域/能量域两套物理系统 + 9 层物理栈 + 跨域三核 |
+| `docs/mathematical-foundations.md` | 全栈数学基础: Maxwell/半导体/拉格朗日/LCP/模态/Kalman/MPC/Port-Hamiltonian/信息论/VLA/STL/Sobolev 十层不完备性证明 |
+
+---
+
 ## v0.8 (进行中, 2026-10-07) — v4「jar 入库 + 消费」定为硬件端唯一调用方式
 
 ### 仓库边界：只提供 jar，**不暴露 EdaLab 源码**

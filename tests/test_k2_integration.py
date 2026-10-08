@@ -8,7 +8,7 @@ import sys
 import unittest
 from pathlib import Path
 
-from embodied_ai.adapters.edalab import FLOW_CHAIN, EdalabAdapter
+from embodied_ai.adapters.edalab import FLOW_CHAIN, STAGE_REGISTRY, EdalabAdapter
 from embodied_ai.adapters.bigdata import BigdataAdapter
 from embodied_ai.deploy import audit_latency
 from embodied_ai.safety.formal import close_budget_loop
@@ -33,6 +33,33 @@ class TestK2A_RealFlowChain(unittest.TestCase):
 
     def test_step_numbers_sequential(self):
         self.assertEqual([s["step"] for s in FLOW_CHAIN], list(range(1, 12)))
+
+
+class TestK3C_StageRegistrySuperset(unittest.TestCase):
+    """Gate 2 C3 双断言: STAGE_REGISTRY = 12 项 = FLOW_CHAIN 11 + vsa_static。"""
+
+    def test_stage_registry_is_12_items(self):
+        """STAGE_REGISTRY = FLOW_CHAIN 11 + vsa_static 第 12 项 (v0.8 vsa-static 扩增)。"""
+        self.assertEqual(len(STAGE_REGISTRY), 12,
+                         f"STAGE_REGISTRY 应为 12 项, 实际 {len(STAGE_REGISTRY)}")
+
+    def test_stage_registry_contains_all_flow_chain(self):
+        """FLOW_CHAIN 全部 11 步都在 STAGE_REGISTRY 中 (行为零改动)。"""
+        flow_names = {s["name"] for s in FLOW_CHAIN}
+        reg_names = {s["name"] for s in STAGE_REGISTRY}
+        self.assertTrue(flow_names.issubset(reg_names),
+                        f"FLOW_CHAIN 有 {flow_names - reg_names} 不在 STAGE_REGISTRY")
+
+    def test_vsa_static_is_step_12(self):
+        """vsa_static 是第 12 项。"""
+        vsa = next((s for s in STAGE_REGISTRY if s["name"] == "vsa_static"), None)
+        self.assertIsNotNone(vsa, "vsa_static 缺失")
+        self.assertEqual(vsa["step"], 12)
+        self.assertEqual(vsa["cli"], "vsa-static")
+
+    def test_flow_chain_still_11(self):
+        """FLOW_CHAIN 仍为 11 (不变, 防回漂)。"""
+        self.assertEqual(len(FLOW_CHAIN), 11)
 
     def test_forge_core_args_match_edacli(self):
         """forge-core 的调用参数与 EdaCli L551 抄录一致。"""

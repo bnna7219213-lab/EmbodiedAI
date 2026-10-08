@@ -1046,16 +1046,27 @@ class EdalabAdapter:
 
     def _diff_vs_contract(self, config: Dict, contract: Dict) -> Dict[str, Any]:
         diff: Dict[str, Any] = {"extra_in_dr": [], "missing_from_dr": [], "within_spec": []}
-        contract_electrical = contract.get("electrical", {})
         config_overrides = config.get("overrides", {})
-        for param_name in contract_electrical:
+        # Gate 2 C4 收官: 四节全覆盖 (electrical / mechanical / sensing / environment)
+        # feedback_rules 是规则列表(IP 不在 overrides 中) — 跳过
+        _CONTRACT_SECTIONS = ("electrical", "mechanical", "sensing", "environment")
+        contract_params: Dict[str, str] = {}  # param_name → section_name (用于错误信息)
+        for _sec in _CONTRACT_SECTIONS:
+            _sec_data = contract.get(_sec, {})
+            if isinstance(_sec_data, dict):
+                for _pn in _sec_data:
+                    contract_params[_pn] = _sec
+        for param_name, section in contract_params.items():
             if param_name in config_overrides:
-                diff["within_spec"].append(param_name)
+                diff["within_spec"].append(f"{section}.{param_name}")
             else:
-                diff["missing_from_dr"].append(param_name)
+                diff["missing_from_dr"].append(f"{section}.{param_name}")
+        _known_overrides = {
+            "canfd_latency_ms", "load_torque_scale", "friction_coefficient", "ambient_temp",
+            "policy_update_hz", "action_repeat",
+        }
         for param_name in config_overrides:
-            if param_name not in contract_electrical and param_name not in (
-                    "canfd_latency_ms", "load_torque_scale", "friction_coefficient", "ambient_temp"):
+            if param_name not in contract_params and param_name not in _known_overrides:
                 diff["extra_in_dr"].append(param_name)
         return diff
 
