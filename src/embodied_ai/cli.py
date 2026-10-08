@@ -250,6 +250,43 @@ def cmd_couple(args):
     return 0 if all_ok else 1
 
 
+def cmd_embodied_full(args):
+    """P1.4 Stage 化: embodied_ai_full 全链路触发 — 按 STAGE_REGISTRY (12 项) 一次性编排。
+
+    与 run_full_chain (11 步烟囱式) 的关键区别:
+      run_full_chain 用 FLOW_CHAIN 顺序跑, 各步独立样本输入, 上游产物无人消费;
+      cmd_embodied_full 用 run_eps_job 走 STAGE_REGISTRY 全 12 项, 每步产物喂给下游。
+    命令: embodied-audit embodied-full [--spec SPEC] [--mode dry/live]
+    默认: dry 模式 (秒回校验, CI 用); --live 真调 Kotlin 引擎 (需 jar)。
+    """
+    from .adapters.edalab import EMBODIED_FULL_STAGES, EdalabAdapter  # noqa: PLC0415
+
+    console.banner(f"embodied_ai_full 一次触发全链路 — {len(EMBODIED_FULL_STAGES)} 项 (P1.4)")
+    spec = getattr(args, "spec", "household_grasp")
+    mode = getattr(args, "mode", "dry")
+
+    console.emit(f"\nspec = {spec} | mode = {mode}\n")
+    adapter = EdalabAdapter()
+    job = adapter.run_eps_job(list(EMBODIED_FULL_STAGES), spec=spec, mode=mode)
+
+    console.emit(f"编排: {job['steps']}/{job['expected_steps']} 步 | ok={'YES' if job['ok'] else 'NO'} "
+                 f"| elapsed={job['elapsed_s']:.2f}s")
+    console.emit(f"触发策: STAGE_REGISTRY (12 项含 vsa_static, FLOW_CHAIN 11 步超集)\n")
+    for i, r in enumerate(job["results"], 1):
+        stage_name = r.get("stage", "?")
+        status = r.get("status", "?")
+        console.emit(f"  step {i:2d} {stage_name:16s} → {status}")
+
+    console.emit("\n数据管道产物:")
+    for name, ctx in job["context"].items():
+        if ctx.get("kind") == "parse_error":
+            console.emit(f"  {name:16s} PARSE_ERROR")
+        else:
+            summary = ctx.get("eps_id") or (f"schema={ctx.get('vsa_schema')}" if ctx.get("vsa_schema") else "ok")
+            console.emit(f"  {name:16s} kind={str(ctx.get('kind', '?')):9s} -> {summary}")
+    return 0 if job["ok"] else 1
+
+
 def cmd_dr(args):
     """K2: 飞轮 DR 制造容差闭环 (ICT/FCT/遥测 -> DR YAML)。"""
     console.banner("飞轮 DR 制造容差闭环 (创新 #1)")
@@ -832,6 +869,17 @@ def _register_all() -> None:
       ),
       examples=["embodied-audit couple --eps-job",
                 "embodied-audit couple --live"])(cmd_couple)
+    # P1.4 Stage 化: embodied-full 全链路触发 (STAGE_REGISTRY 12 项编排, 非烟囱式)
+    R("embodied-full", "embodied_ai_full 一次性触发全链路 (12 步 EPS 编排, P1.4)", group="硬件/EDA",
+      since="v0.9",
+      add_args=lambda p: (
+          p.add_argument("--spec", default="household_grasp",
+                         help="任务档案 (household_grasp / climbing)"),
+          p.add_argument("--mode", default="dry", choices=["dry", "live"],
+                         help="dry=秒回校验 (CI 用); live=真调 Kotlin 引擎"),
+      ),
+      examples=["embodied-audit embodied-full",
+                "embodied-audit embodied-full --spec climbing --live"])(cmd_embodied_full)
     R("dr", "飞轮 DR 制造容差闭环 (ICT/FCT → DR → 训练)", group="硬件/EDA",
       since="v0.5", examples=["embodied-audit dr"])(cmd_dr)
     R("foc", "FOC + SVPWM + 硬件自动关机链时序验证", group="硬件/EDA",

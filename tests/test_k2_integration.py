@@ -8,7 +8,8 @@ import sys
 import unittest
 from pathlib import Path
 
-from embodied_ai.adapters.edalab import FLOW_CHAIN, STAGE_REGISTRY, EdalabAdapter
+from embodied_ai.adapters.edalab import (FLOW_CHAIN, STAGE_REGISTRY, EMBODIED_FULL_STAGES,
+                                         EdalabAdapter)
 from embodied_ai.adapters.bigdata import BigdataAdapter
 from embodied_ai.deploy import audit_latency
 from embodied_ai.safety.formal import close_budget_loop
@@ -233,3 +234,60 @@ class TestK3_VLAStatic(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+# ---------- P1.4 Stage/EPS 注册测试 (v0.9) ----------
+
+class TestP14EmbodiedFullStages(unittest.TestCase):
+    """P1.4: EMBODIED_FULL_STAGES = STAGE_REGISTRY 全 12 项 (编排, 非烟囱)。"""
+
+    def test_embodied_full_stages_length(self):
+        """embodied-full 应覆盖 12 个 stage。"""
+        self.assertEqual(len(EMBODIED_FULL_STAGES), 12,
+                         f"EMBODIED_FULL_STAGES 应为 12, 实际 {len(EMBODIED_FULL_STAGES)}")
+
+    def test_embodied_full_matches_stage_registry(self):
+        """EMBODIED_FULL_STAGES 与 STAGE_REGISTRY 完全一致 (顺序 + 名称)。"""
+        self.assertEqual(list(EMBODIED_FULL_STAGES), [s["name"] for s in STAGE_REGISTRY])
+
+    def test_embodied_full_includes_vsa_static(self):
+        """EMBODIED_FULL_STAGES 含 vsa_static (FLOW_CHAIN 没有的第 12 项)。"""
+        self.assertIn("vsa_static", EMBODIED_FULL_STAGES)
+        flow_names = {s["name"] for s in FLOW_CHAIN}
+        self.assertNotIn("vsa_static", flow_names,
+                         "FLOW_CHAIN 不应含 vsa_static (差额 11 vs 12 的根源)")
+
+    def test_embodied_full_is_tuple(self):
+        """EMBODIED_FULL_STAGES 是 tuple (不可变, 防止意外修改)。"""
+        self.assertIsInstance(EMBODIED_FULL_STAGES, tuple)
+
+
+class TestP14EmbodiedFullChain(unittest.TestCase):
+    """P1.4: embodied_ai_full 全链路 dry 模式端到端。"""
+
+    def test_run_eps_job_all_12_stages_dry(self):
+        """run_eps_job 走 STAGE_REGISTRY 全 12 项 dry 模式 → ok=True。"""
+        adapter = EdalabAdapter()
+        job = adapter.run_eps_job(list(EMBODIED_FULL_STAGES), spec="household_grasp", mode="dry")
+        self.assertEqual(job["expected_steps"], 12)
+        self.assertEqual(job["steps"], job["expected_steps"])
+        self.assertTrue(job["ok"], f"全链 dry 应全 OK, 实际: "
+                        f"{[(r.get('stage'), r.get('status')) for r in job['results']]}")
+
+    def test_run_eps_job_climbing_spec_dry(self):
+        """climbing spec 下 embodied-full 全链路 dry 模式仍全 OK。"""
+        adapter = EdalabAdapter()
+        job = adapter.run_eps_job(list(EMBODIED_FULL_STAGES), spec="climbing", mode="dry")
+        self.assertEqual(job["steps"], 12)
+        self.assertTrue(job["ok"])
+
+    def test_context_pipeline_produces_outputs(self):
+        """每步产物都进入 context (数据管道, 验证 P1.4 非烟囱式编排)。"""
+        adapter = EdalabAdapter()
+        job = adapter.run_eps_job(list(EMBODIED_FULL_STAGES), mode="dry")
+        self.assertEqual(len(job["context"]), 12,
+                         "12 步均应产生 context 产物 (parse 失败也算一种产物)")
+        # vsa_static 产物解析成功时含 vsa 关键字段
+        vsa_ctx = job["context"].get("vsa_static", {})
+        self.assertNotEqual(vsa_ctx.get("kind"), "yaml_missing",
+                            "vsa_static 在 dry 模式 + 已有输入下不应报 yaml_missing")

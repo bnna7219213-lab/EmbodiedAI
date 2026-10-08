@@ -405,6 +405,11 @@ VSA_STAGE: Dict[str, Any] = {
 
 STAGE_REGISTRY: List[Dict[str, Any]] = [*FLOW_CHAIN, VSA_STAGE]
 
+# P1.4: 全链路触发定义 — 12 个 stage 名称, 供 run_eps_job 一次编排
+# 注: FLOW_CHAIN (11) 与 STAGE_REGISTRY (12) 的差额 = vsa_static;
+#     embodied-full 触发的是 STAGE_REGISTRY 全 12 项(编排, 非烟囱)。
+EMBODIED_FULL_STAGES: "tuple" = tuple(s["name"] for s in STAGE_REGISTRY)
+
 # stage → 产物类型 (供 parse_stage_output 分派)
 STAGE_OUTPUT_PARSERS: Dict[str, str] = {
     "forge_core": "eps_id",      # stdout 提取 "EPS ID: <id>"
