@@ -81,22 +81,80 @@
 
 两个缺陷均由 `tests/test_selfcheck.py` 抓到（前者由"注册表可发现性"断言，后者由 CLI 子进程断言）。
 
-### 任务 B — 双轨缺口 G10 / G7 / G2（本轮完成）
+### 任务 B — 双轨缺口 G10 / G7 / G2（本轮完成，详见后续段落）
 
-双轨机制（G6 建立）在本轮承担了三个"建模/算法型"缺口的修复，每个都有**可证伪的 oracle**：
+### B4 收尾 — 腱/凝胶柔体参数进制造容差 DR（2026-10-08）
 
-| 缺口 | 交付 | oracle（诚实标注） | 实测 |
-|---|---|---|---|
-| **G10** 电机缺 Ke/flux/Ld/Lq/Rs | `hardware/motor_model.py`：`MotorSpec` 补全电磁参数 + `verify_motor_spec` 三方校验 | jar 的 motor-drive **不输出**这些字段 → 无 jar oracle；改用**契约 + 物理关系（Ke=pp·ψ，Kt=1.5·pp·ψ）+ FOC 侧既有值**三方对照 | 10 项校验全绿；Ke=0.0875 V·s/rad、Kt=0.13125 N·m/A |
-| **G7** DigitalTwin 仅阈值告警 | `hil/twin_fft.py`：Hann 窗 + `rfft` 功率谱 + 轴承四类特征频率（BPFO/BPFI/BSF/FTF）+ 谱峰显著度判别 | jar 无 digital-twin CLI → 无 oracle；改用**注入已知特征必识别 + 健康信号不误报**双向断言 | 健康不误报 ✅ / 注入 BPFO 被识别 ✅ / **阈值法漏检被实证** ✅ |
-| **G2** FOC ↔ MotorDrive 参数未对齐 | `hardware/foc_board_align.py`：解析 jar 板级实测输出 + 与 Python FOC 参数交叉校验，**不匹配进 mismatches（不静默）** | 可比项（电压/电流/器件/固件）**真对照 jar 实测**；控制参数与 FOC 侧自洽 + 离散约束 | 板级对齐 0 不匹配；**抓到并修正 FOCConfig 增益 0.014% 漂移** |
+### 断点 ③ 修复：最小 MissionManager — OS 决策中枢（2026-10-08）
 
-**G2 抓到的真问题（修复记录）**：`FOCConfig.kp_d=1.106 / ki_d=1759.0` 是手填舍入值，与极点配置反算 (`Ld·ωc=1.105841` / `Rs·ωc=1759.2919`) 有 0.014%/0.017% 偏差 —— 属"两处参数各自维护"的典型漂移。已改为与公式精确自洽，消除真机调试时的隐患。
+**缺口**：无调度器/行为树/世界模型；`run()` 是 sleep 占位——审计定级 D。
 
-**顺带修复的架构缺陷（与 cli_registry 空表同类）**：后端注册依赖 `hardware`/`hil` 被导入；只 `import adapters.edalab` 时**看不到任何 python 后端** → `resolve_backend` 抛错或误判"无 python 后端"。修法：`ensure_backends_registered()`（惰性导入注册模块，集中在 `available_backends()` 入口触发）。
+**交付（`runtime/mission.py`，约 290 行）**：
 
-**新增**：CLI `twin` 命令（`--backend auto|jar|python`）、verify 项 `dual_track_gaps`、`tests/test_task_b_gaps.py` 22 项（含 6 项反证）。
-**回归**：pytest **419 passed** + verify **28/28 PASS**。
+| 组件 | 内容 |
+|---|---|
+| `MissionTemplate` | 任务模板 = 技能序列 + 关键词 + 超时 + 完成条件；内置 4 个（pick_and_place / grasp_only / wipe_surface / clean_and_pick），**只用控制器已注册技能**（grasp/place/wipe，测试守护不虚构） |
+| `MissionState` | 状态机：PENDING → RUNNING → SUCCESS/FAILED/ABORTED；**非法转移必拒**（终态不可复活） |
+| `MissionManager` | `parse("一句话")` → 关键词匹配模板（不可识别必报 `MissionError`）→ `run()` 驱动 20Hz 环（每步：安全检查→观测→技能下发→step→完成判定）→ 终态 |
+| Bus 集成 | 状态变更发 `SAFETY_EVENT` topic（mission:started/success/...）——复用断点 1 的 Bus，可观测 |
+
+**端到端实测**：
+```
+"抓起杯子放到桌上" → pick_and_place (grasp→place)
+→ 20Hz 环 2 步 → SUCCESS
+状态链: pending→running→success
+```
+
+**反证路径全部验证**：超时 → FAILED（"timeout: N steps"）；安全事件 → ABORTED；
+不可识别指令 → `MissionError`；重复模板注册 → 拒；终态复活 → 拒。
+
+**守护**：`tests/test_mission_manager.py` **15 项**（解析 5 / 状态机 3 / 端到端 3 /
+失败路径 3 / 技能覆盖 1）；verify 新增 `mission_manager`。
+全量 **521 passed** + verify **31/31 PASS**。
+
+**8 步竖井覆盖**（审计建议）：①指令→②状态机→③技能调度→④20Hz 执行 ✅（本轮）；
+⑤CAN 帧→⑥遥测→⑦DR→⑧回流：⑤⑥ 已有（Bus + DBC），⑦⑧ 已有（bigdata 飞轮）——
+**竖井骨架全通，待真机数据激活**。
+
+### 断点 1 修复：最小 Bus 抽象（2026-10-08）
+
+**缺口**：层间 import 硬耦合，contracts/ 无运行时载体——审计定级 D。
+
+**交付（`runtime/bus.py`）**：Topic 枚举（6 主题对齐三栈）+ Message 信封（timestamp/seq/source/schema_version）+ InProcessBus（同步 pub/sub，线程安全，单订阅者异常不阻断）+ schema 校验拒垃圾 + make_bus_backed_controller 一行接入 20Hz 环（原行为零破坏）。CAN-FD 帧是一等消息（复用 DBC 600 帧验证路径）。
+
+守护：test_runtime_bus.py 12 项（含反证）；verify runtime_bus。
+
+### 断点 2 接线：load_ckpt → policy → controller（2026-10-08）
+
+**缺口**：训练产出 .pt 但从未进控制环。
+
+**交付（`control/policy_loader.py`）**：PolicyLoader（.pt→重建模型→strict load_state_dict→infer_action，失败必抛 CheckpointError）→ VLAExecutablePolicy（维度适配+provenance）→ attach_policy_to_controller（无 torch 降级 ReplayPolicy 诚实标注）。
+
+实测：backend=vla_ckpt，控制环非零动作，推理 10.5ms。守护：test_policy_loader.py 8 项；verify policy_loading。
+
+
+
+
+**缺口**：层间协作靠 import 硬耦合；contracts/ 只是静态 YAML/DBC，**没有运行时载体**——
+审计报告定级 D（"无 Bus 抽象、无消息 schema"）。
+
+**交付（`runtime/bus.py`，约 270 行，零外部依赖）**：
+
+| 组件 | 内容 |
+|---|---|
+| `Topic` | 枚举化主题（OBSERVATION / ACTION / CAN_JOINT_CMD / CAN_TELEMETRY / SAFETY_EVENT / DR_UPDATE）——对齐三栈（控制L/物理P/数据D/安全S） |
+| `Message` | 信封：timestamp / seq（全局单调）/ source / schema_version——每条消息可追溯 |
+| `InProcessBus` | 同步 pub/sub（20Hz 环内零序列化开销）；线程安全；单订阅者异常不阻断总线；stats 可观测（published/delivered/dropped/rejected） |
+| `_TOPIC_SCHEMAS` | 每 topic 的 payload schema 校验——垃圾消息在入口被拒 |
+| `make_bus_backed_controller()` | 一行接入 20Hz 控制器（step 内发布 OBSERVATION + ACTION；原行为完全保留——既有测试零破坏） |
+
+**CAN-FD 是一等公民**：`encode_joint_cmd`/`decode_telemetry`（R4 已 600 帧 0 失配）的帧对象直接作为 Bus payload 流转，解码往返在 Bus 上验证通过。
+
+**端到端实测**：控制器 step → OBSERVATION(1) + ACTION(1) 上 Bus → CAN_JOINT_CMD(3帧) 发布 → 订阅者收到 → `crc_ok=True`；消息 `seq=2, source=controller_20hz` 可追溯。
+
+**诚实边界**：跨进程/跨机器（真实 ROS2 对接）不在此轮——那是 Phase P 硬件侧；内部纯函数调用保持直调（合理耦合不消息化）。
+
+**守护**：`tests/test_runtime_bus.py` **12 项**（含反证：垃圾 payload 必拒 / 坏 topic 必报 / 无订阅不崩 / 单订阅者异常不阻断）；verify 新增 `runtime_bus`。全量 **506 passed** + verify **30/30 PASS**。
 
 ### jar ↔ 源码漂移治理（两层闸门）
 
