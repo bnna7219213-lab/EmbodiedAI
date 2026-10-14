@@ -52,6 +52,19 @@ mechanical:
     nominal: 0.002
     distribution: normal
     sigma_percent: 30           # 背隙批次差异大 → 编码器双重化必要
+  # ---- B4 (2026-10-08): 腱驱动柔体参数进制造容差 ----
+  tendon_modulus_gpa:
+    nominal_gpa: 150.0
+    distribution: normal
+    sigma_percent: 5            # UHMWPE/钢缆类腱批次差异 (文献典型 3-8%)
+    note: "来源: contracts/hw_requirements.yaml climbing.hand.tendon_modulus_gpa=150;
+      腾刚度影响欠驱动耦合的指力分布 (dexterous_hand underactuated_coupling) 与
+      F5 手的力闭合质量 ε — σ 过大会让 F5 的包络优势退化到 F3 水平"
+  tendon_diameter_mm:
+    nominal_mm: 1.0
+    distribution: normal
+    sigma_percent: 3            # 挤出工艺公差
+    note: "来源: 契约 climbing.hand.tendon_diameter_mm; 截面积 ∝ d² → σ_EA ≈ 2σ_d"
 
 # ---- 传感域容差 (对应 SignalFlow / 触觉感知) ----
 sensing:
@@ -64,6 +77,21 @@ sensing:
     mu_hat: 0.8
     sigma_mu: 0.15              # 机会约束输入: f_n >= |f_t|/(mu_hat - z*sigma_mu)
     note: "z=2.0 → 5% 滑脱率目标 (见 hw_requirements.safety)"
+  # ---- B4 (2026-10-08): 指尖凝胶柔体参数进制造容差 ----
+  fingertip_gel_modulus_pa:
+    nominal_pa: 250000.0        # GelSight 类硅胶凝胶 (Shore A 20-30 对应量级)
+    distribution: lognormal     # 浇筑批次差异右偏 (硬度批次间差异典型 15-25%)
+    sigma_percent: 20
+    note: "来源: climb_scene.hertz_stiffness(E_gel=2.5e5, nu=0.45) — A2 柔顺耦合的
+      Hertz 接触刚度输入; 模量漂移直接改变柔顺捕获峰值力 (F=k·δ^1.5), 批次偏硬
+      → 捕获窗口收窄 (v_capture_max 下降) → dyno 能量调度须按最硬批次设计"
+  fingertip_contact_stiffness_n_per_m:
+    nominal_n_per_m: 3000.0
+    distribution: normal
+    sigma_percent: 15
+    note: "来源: soft_body.SoftBodyConfig.grasp_stiffness (A4 指尖-物体软接触);
+      DexterousHandContact.distribute() 的最弱指份额在此基础上波动 → 单指峰值力
+      32.7N±15% 仍 < 60N Hertz 极限 (安全裕量充足)"
 
 # ---- 环境域 (对齐 EdaLab data-flywheel 的 DR 输出格式) ----
 environment:
