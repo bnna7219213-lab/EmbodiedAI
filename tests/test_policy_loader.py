@@ -8,6 +8,7 @@
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -25,6 +26,14 @@ PY314 = r"C:\Users\bnna7\AppData\Local\Programs\Python\Python314\python.exe"
 HAS_TORCH_PY = Path(PY314).exists()
 
 
+def _resolve_test_ckpt() -> Path | None:
+    """解析测试用 checkpoint 路径 (CI 无 ckpt 时返回 None)。"""
+    ck = find_latest_checkpoint()
+    if ck is None or not ck.exists():
+        return None
+    return ck
+
+
 class TestPolicyLoaderErrors(unittest.TestCase):
     """A. 加载错误路径 (受管环境可跑 — 不需要 torch)。"""
 
@@ -34,14 +43,22 @@ class TestPolicyLoaderErrors(unittest.TestCase):
             PolicyLoader(REPO / "nonexistent.pt").load()
 
     def test_load_without_load_call_raises(self):
-        """反证: 未 load() 就 infer 必须报错 (防静默零)。"""
-        loader = PolicyLoader(find_latest_checkpoint())
+        """反证: 未 load() 就 infer 必须报错 (防静默零)。
+
+        CI 无 checkpoint 时用临时路径构造 loader (验证未 load 即 infer 的报错)。
+        """
+        ck = _resolve_test_ckpt()
+        if ck is None:
+            ck = Path(tempfile.mktemp(suffix=".pt"))
+        loader = PolicyLoader(ck)
         with self.assertRaises(CheckpointError):
             loader.infer_action(None, None, np.zeros(30, dtype=np.float32))
 
     def test_find_latest_checkpoint(self):
-        ck = find_latest_checkpoint()
-        self.assertIsNotNone(ck, "应能找到既有 checkpoint")
+        """有 checkpoint 时验证可发现；无时 skip (CI 环境无训练产出物)。"""
+        ck = _resolve_test_ckpt()
+        if ck is None:
+            self.skipTest("无 checkpoint 文件 — 跳过可发现性检查")
         self.assertTrue(ck.exists())
 
 
@@ -49,8 +66,9 @@ class TestReplayPolicy(unittest.TestCase):
     """A. 降级路径 (受管环境)。"""
 
     def test_replay_is_deterministic_and_honest(self):
-        ck = find_latest_checkpoint()
-        p = ReplayPolicy(ck)
+        """无 ckpt 时走 None 路径 — 验证降级仍保持确定性与诚实标注。"""
+        ck = _resolve_test_ckpt()
+        p = ReplayPolicy(ck)  # ck 可能为 None
         obs = {"joint_positions": np.ones(12, dtype=np.float32)}
         a1, a2 = p.generate(obs), p.generate(obs)
         np.testing.assert_array_equal(a1, a2, "回放策略必须确定性")
@@ -58,9 +76,17 @@ class TestReplayPolicy(unittest.TestCase):
         self.assertIn("不是模型推理", p.provenance["note"])
 
     def test_replay_produces_nonzero(self):
-        p = ReplayPolicy(find_latest_checkpoint())
+        p = ReplayPolicy(_resolve_test_ckpt())
         a = p.generate({"joint_positions": np.ones(12, dtype=np.float32)})
         self.assertTrue(np.any(np.abs(a) > 1e-6), "回放不应输出全零")
+
+    def test_replay_handles_none_checkpoint(self):
+        """反证: ckpt=None 时 ReplayPolicy 不崩溃, 如实标注 ckpt_exists=False。"""
+        p = ReplayPolicy(None)
+        self.assertFalse(p.exists, "ckpt=None 时应标 exists=False")
+        self.assertEqual(p.provenance["backend"], "replay")
+        a = p.generate({"joint_positions": np.ones(12, dtype=np.float32)})
+        self.assertTrue(np.any(a != 0), "即使 ckpt=None 也应产出确定性非零输出")
 
 
 class TestAttachRouting(unittest.TestCase):
@@ -76,7 +102,7 @@ class TestAttachRouting(unittest.TestCase):
         from embodied_ai.control.policy_loader import attach_policy_to_controller
 
         ctrl = make_controller()
-        r = attach_policy_to_controller(ctrl, find_latest_checkpoint())
+        r = attach_policy_to_controller(ctrl, _resolve_test_ckpt())
         self.assertEqual(r["backend"], "replay")
         obs = {"ee_position": np.zeros(3), "joint_positions": np.ones(12)}
         a = ctrl.step(obs)

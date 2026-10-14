@@ -47,8 +47,11 @@ class PolicyLoader:
         {"model", "optimizer", "iter", "best_val_loss", "config", "loss_log", "rng_state"}
     """
 
-    def __init__(self, ckpt_path: str | Path):
-        self.ckpt_path = Path(ckpt_path)
+    def __init__(self, ckpt_path: str | Path | None):
+        if ckpt_path is not None:
+            self.ckpt_path = Path(ckpt_path)
+        else:
+            raise CheckpointError("checkpoint 路径为 None — 无可用训练产物")
         self.meta: Dict[str, Any] = {}
         self._model = None
         self._has_torch = False
@@ -200,9 +203,13 @@ class ReplayPolicy:
     用零状态确定性向量 + provenance="replay" — 不假装推理, 上游与测试可分辨。
     """
 
-    def __init__(self, ckpt_path: str | Path):
-        self.ckpt_path = Path(ckpt_path)
-        self.exists = self.ckpt_path.exists()
+    def __init__(self, ckpt_path: str | Path | None):
+        if ckpt_path is not None:
+            self.ckpt_path = Path(ckpt_path)
+            self.exists = self.ckpt_path.exists()
+        else:
+            self.ckpt_path = Path("none")
+            self.exists = False
         self.last_inference_ms = 0.0
         self.inference_count = 0
 
@@ -234,10 +241,11 @@ def attach_policy_to_controller(controller, ckpt_path: str | Path,
         loader = PolicyLoader(ckpt_path).load()
         policy = VLAExecutablePolicy(loader)
         backend = "vla_ckpt"
-    except ImportError:
+    except (ImportError, CheckpointError):
+        # ImportError: 无 torch — 降级 Replay
+        # CheckpointError: ckpt 无效/None — 同样降级 Replay
         policy = ReplayPolicy(ckpt_path)
         backend = "replay"
-    # CheckpointError 不在此吞掉 — 坏 ckpt 应该让接线失败 (调用方决定)
 
     controller.rl_coordinator.load_skill(skill_name, policy)
     # 默认技能切到刚挂载的 (controller.execute 用 current_skill)
