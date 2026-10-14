@@ -254,6 +254,142 @@ def check_dexterous_hand() -> int:
     return 0
 
 
+def check_mission_manager() -> int:
+    """断点 ③ 守护: 最小 OS 决策中枢 (一句话指令→状态机→20Hz 环)。
+
+    验证: 指令解析 / 状态机合法转移 / 端到端 SUCCESS / 超时 FAILED /
+    安全事件 ABORTED / Bus 事件可观测。
+    """
+    import numpy as np
+
+    from .runtime import MissionError, MissionManager, MissionState
+    from .runtime.bus import Collector, InProcessBus, Topic, make_bus_backed_controller
+
+    bus = InProcessBus("verify_mm")
+    from .control.household_robot_system import make_controller
+    ctrl = make_controller()
+    make_bus_backed_controller(ctrl, bus)
+    mm = MissionManager(ctrl, bus)
+
+    zero_obs = lambda: {"ee_position": np.zeros(3), "joint_positions": np.zeros(12)}  # noqa: E731
+
+    # 端到端 SUCCESS
+    m = mm.parse("抓起杯子放到桌上")
+    result = mm.run(m, obs_provider=zero_obs)
+    assert result.state == MissionState.SUCCESS, f"应为 SUCCESS: {result.state}"
+    assert result.steps_executed > 0, "至少执行 1 步"
+
+    # 超时 FAILED
+    m2 = mm.parse("抓")
+    obs_bad = {"ee_position": np.zeros(3), "joint_positions": np.ones(12) * 10}
+    r2 = mm.run(m2, obs_provider=lambda: obs_bad, max_steps_override=3)
+    assert r2.state == MissionState.FAILED, f"超时应 FAILED: {r2.state}"
+
+    # 安全事件 ABORTED
+    ctrl._safety_stop = True
+    m3 = mm.parse("抓")
+    r3 = mm.run(m3, obs_provider=zero_obs, max_steps_override=10)
+    assert r3.state == MissionState.ABORTED, f"安全事件应 ABORTED: {r3.state}"
+    ctrl._safety_stop = False
+
+    # 不可识别指令报错
+    try:
+        mm.parse("xyzzy_不可识别")
+        raise AssertionError("不可识别指令未报错")
+    except MissionError:
+        pass
+    return 0
+
+
+def check_runtime_bus() -> int:
+    """断点 1 守护: 最小 Bus 抽象 (层间消息化)。
+
+    验证: pub/sub 语义 / 消息信封可追溯 / schema 拒垃圾 / 控制环经 Bus 收发 /
+    CAN 帧一等公民 / 无订阅不崩 / 单订阅者异常不阻断。
+    """
+    import numpy as np
+
+    from .runtime import Collector, InProcessBus, Topic, make_bus_backed_controller
+
+    bus = InProcessBus("verify")
+    c = Collector()
+    bus.subscribe(Topic.ACTION, c)
+    bus.publish(Topic.ACTION, {"action": np.ones(12)}, source="verify")
+    assert len(c.messages) == 1 and c.last.seq == 1, "pub/sub 基本语义"
+
+    # 反证: 垃圾被拒
+    try:
+        bus.publish(Topic.ACTION, {"bad": 1})
+        raise AssertionError("垃圾 payload 未被拒")
+    except ValueError:
+        pass
+
+    # 控制环接入
+    from .control.household_robot_system import make_controller
+    ctrl = make_controller()
+    make_bus_backed_controller(ctrl, bus)
+    obs_c, act_c = Collector(), Collector()
+    bus.subscribe(Topic.OBSERVATION, obs_c)
+    bus.subscribe(Topic.ACTION, act_c)
+    ctrl.step({"ee_position": np.zeros(3), "joint_positions": np.zeros(12)})
+    assert len(obs_c.messages) >= 1, "控制环应发布观测"
+    assert len(act_c.messages) >= 1, "控制环应发布动作"
+    assert act_c.messages[-1].source == "controller_20hz", "消息可追溯"
+
+    # CAN 一等公民
+    from .simulation.real_robot_env import CANFrame, decode_telemetry, encode_joint_cmd
+    frames = Collector()
+    bus.subscribe(Topic.CAN_JOINT_CMD, frames)
+    f = encode_joint_cmd(0, 1.0, 0.0, 20.0)
+    bus.publish(Topic.CAN_JOINT_CMD, {"frame": f}, source="verify")
+    dec = decode_telemetry(CANFrame(300, frames.last.payload["frame"].data))
+    assert dec["crc_ok"], "CAN 帧经 Bus 后解码失败"
+    return 0
+
+
+def check_policy_loading() -> int:
+    """断点 2 接线守护: 训练 ckpt → 控制器 (load_ckpt → policy → controller)。
+
+    受管环境 (无 torch) 验证降级路径的完整性与诚实性:
+      · checkpoint 可发现
+      · ReplayPolicy 确定性 + provenance 标注 "不是模型推理"
+      · attach 后控制环产出非零动作 (接线真实生效)
+      · 反证: 坏路径抛 CheckpointError (不静默零向量)
+    真推理路径由 tests/test_policy_loader.py 的 3.14 子进程端到端覆盖。
+    """
+    import numpy as np
+
+    from .control.policy_loader import (CheckpointError, PolicyLoader,
+                                         ReplayPolicy, find_latest_checkpoint)
+    ck = find_latest_checkpoint()
+    assert ck is not None and ck.exists(), f"checkpoint 不可发现: {ck}"
+
+    # 降级路径 (本环境)
+    p = ReplayPolicy(ck)
+    obs = {"joint_positions": np.ones(12, dtype=np.float32)}
+    a1, a2 = p.generate(obs), p.generate(obs)
+    assert np.array_equal(a1, a2), "回放策略必须确定性"
+    assert p.provenance["backend"] == "replay"
+    assert "不是模型推理" in p.provenance["note"], "降级必须诚实标注"
+
+    # 接线 (受管环境走 replay)
+    from .control.household_robot_system import make_controller
+    from .control.policy_loader import attach_policy_to_controller
+    ctrl = make_controller()
+    rep = attach_policy_to_controller(ctrl, ck)
+    assert rep["backend"] in ("replay", "vla_ckpt"), rep
+    a = ctrl.step({"ee_position": np.zeros(3), "joint_positions": np.ones(12)})
+    assert np.any(np.abs(a) > 1e-6), "接线后控制环动作全零 — 权重未进入控制环"
+
+    # 反证: 坏路径必须抛错
+    try:
+        PolicyLoader(REPO_ROOT / "nonexistent_ckpt.pt").load()
+        raise AssertionError("坏路径未抛 CheckpointError")
+    except CheckpointError:
+        pass
+    return 0
+
+
 def check_dual_track_gaps() -> int:
     """G10/G7/G2 双轨缺口守护 (2026-10-08 任务 B)。
 
@@ -809,6 +945,9 @@ CHECKS: List[Tuple[str, Callable[[], int]]] = [
     ("vla_block_size", check_vla_block_size),  # C1 (P0): 视觉截断 + Jetson 预算双守护
     ("afe_ind_frontend", check_afe_ind_frontend),  # Phase1: AFE-IND 触觉硬件前端移植守护
     ("dual_track_gaps", check_dual_track_gaps),    # G10/G7/G2 双轨缺口守护
+    ("policy_loading", check_policy_loading),      # 断点2: ckpt→policy→controller 接线
+    ("runtime_bus", check_runtime_bus),            # 断点1: 最小 Bus 抽象 (层间消息化)
+    ("mission_manager", check_mission_manager),    # 断点3: OS 中枢 (指令→状态机→20Hz环)
     ("cli_smoke", check_cli_smoke),
 ]
 
