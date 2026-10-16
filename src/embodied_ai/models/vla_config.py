@@ -60,6 +60,10 @@ class VLAConfig:
     state_dim: int = 30             # 本体感受维度 (关节角 + 速度 + 力矩)
     state_embd: int = 384           # 状态投影维度 (= n_embd)
     fusion_type: str = "cross_attention"  # "cross_attention" / "concat" / "prepend"
+    # plan_v5 M3 (2026-10-17): 输入模态 — "vla" = vision+language→action,
+    #   "v2a" = vision-only→action (纯视觉也构成判断依据, 语言通道缺省)。
+    #   v2a 时 min_block_size 不含语言 token, 视觉 token 不会被语言挤掉。
+    modality: str = "vla"           # "vla" / "v2a"
 
     # ============== 4. 动作 Tokenizer ==============
     action_dim: int = 12            # 动作维度 (关节数)
@@ -115,9 +119,17 @@ class VLAConfig:
     LANG_TOKENS: int = 8  # replay_dataset.lang_len 固定 8
 
     @property
+    def lang_tokens(self) -> int:
+        """按 modality 取语言 token 数: v2a (纯视觉) 无语言通道。"""
+        return self.LANG_TOKENS if self.modality == "vla" else 0
+
+    @property
     def min_block_size(self) -> int:
-        """训练所需的最小 block_size (视觉+语言+状态+动作+bos)."""
-        return (self.total_vision_tokens + self.LANG_TOKENS + 1
+        """训练所需的最小 block_size (视觉+语言+状态+动作+bos).
+
+        modality="v2a" 时语言 token 计 0 (vision-only→action)。
+        """
+        return (self.total_vision_tokens + self.lang_tokens + 1
                 + self.action_horizon + 1)
 
     def __post_init__(self):
