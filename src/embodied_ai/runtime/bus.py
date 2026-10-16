@@ -44,6 +44,10 @@ class Topic(str, Enum):
     SAFETY_EVENT = "safety_event"        # STO/过流/急停 (DBC BO_900)
     # 数据 D 栈
     DR_UPDATE = "dr_update"              # 域随机化参数更新 (飞轮回流)
+    # 感知/认知栈 (plan_v5 Sprint M: 多传感器融合 + SLAM + 认知中枢)
+    SENSOR_RAW = "sensor_raw"            # 分频处理后的传感器样本 (视频/微波/…)
+    POSE_UPDATE = "pose_update"          # SLAM 位姿更新 (自身 + 对象, 带时间戳)
+    EVENT = "event"                      # 认知中枢四要素事件 (时间/地点/人物/事情)
 
 
 #: 每个 topic 的 payload schema（校验用; None = 任意）
@@ -54,6 +58,10 @@ _TOPIC_SCHEMAS: Dict[str, Dict[str, type]] = {
     Topic.CAN_TELEMETRY: {"frame": object},
     Topic.SAFETY_EVENT: {"event_type": str},
     Topic.DR_UPDATE: {"overrides": dict},
+    # 感知/认知栈 (plan_v5 Sprint M)
+    Topic.SENSOR_RAW: {"channel": str, "samples": np.ndarray},
+    Topic.POSE_UPDATE: {"pose": np.ndarray},
+    Topic.EVENT: {"record": object},           # cognition.EventRecord
 }
 
 
