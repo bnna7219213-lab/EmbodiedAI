@@ -43,5 +43,6 @@ archive/edalabcore-migrated-*/
 # ---- IDE / OS ----
 .vscode/
 .idea/
+.trae/
 .DS_Store
 Thumbs.db

@@ -4,6 +4,22 @@
 
 ---
 
+## v1.0 (2026-10-17) — Sprint M：机器人端补全（多传感器信道 / VLA 双路径 / SLAM / 认知中枢）
+
+> 计划文档: [plan_v5.md](plan_v5.md)（M1-M5）。补全机器人端四大缺口，全部为可运行代码模块。
+
+| ID | 交付 | 验收 |
+|---|---|---|
+| **M1** | `perception/sensor_fusion.py` 多传感器融合 + 分频信道处理（视频信号流 + 微波等，FFT 频带掩蔽解复用，分别处理→RingBuffer 暂存→Bus `SENSOR_RAW`） | 分频串扰 <-20dB；`fusion-demo` 可运行 |
+| **M2** | `perception/slam.py` SLAM 三维坐标 + 时间戳（`EKFSLAM2D` 恒速模型 + 路标增广 + range/bearing，`PoseStore` who-pose-where-when） | 50 步位姿误差 <0.3m；时间戳单调；`slam-demo` 可运行 |
+| **M3** | `models/vla_v2a.py` VLA 双路径：`vision+language→action` 与 `vision-only→action`（V-to-action）等价（`vla_config.modality` "vla"/"v2a"，v2a 时 min_block_size 不含语言 token） | v2a ≡ vla(None) 等价守护；`test_vla_v2a.py` 11 项 |
+| **M4** | `cognition/cognitive_hub.py` 认知中枢四要素（时间/地点/人物/事情）：记录(订阅 Bus `EVENT`) / 分析 / 计算 / 规划(规则式) / 记忆(时间衰减召回) | 五能力反证；`cog-demo` 可运行 |
+| **M5** | 接线收尾：Bus Topic `SENSOR_RAW`/`POSE_UPDATE`/`EVENT`；CLI `fusion-demo`/`slam-demo`/`cog-demo`；verify +4 项 | **verify 35/35 PASS**；**pytest 580 passed**（v4: 28/28 + 441） |
+
+**provenance**: 分频信道参数 synthetic（真实微波前端标定=待领域验证）；SLAM 噪声 assumed；VLAPolicy head 权重 synthetic（确定性随机投影，非训练产物）。
+
+---
+
 ## v0.9 (2026-10-08) — Gate 2 收官 + 全栈架构顶层文档体系
 
 ### Gate 2 达成 (技术层面)

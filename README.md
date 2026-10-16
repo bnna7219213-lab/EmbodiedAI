@@ -7,7 +7,7 @@
 > **版本**: v0.7 | 更新日期: 2026-10-06
 >
 > **一键验收**: `scripts\verify.bat` (cmd) / `.\scripts\verify.ps1` (PowerShell) → `RESULT=VERIFY_OK`
-> 或 `python -m embodied_ai.cli verify` (**28 项**聚合自检, 退出码即结论; 含 pytest = 29 项 + 441 passed)
+> 或 `python -m embodied_ai.cli verify` (**35 项**聚合自检, 退出码即结论; 含 pytest = 36 项 + 580 passed)
 >
 > **v0.7 主题**: 针对"全链条完成度 30-35%"的评估结论批量补齐缺口 —
 > 柔性体 (G6) / 双足 3D (G9) / 灵巧手 (G11) / 终身学习 (G12) / GUI (L7) /
