@@ -878,6 +878,97 @@ def _write_snapshot(root, *, arch="aarch64", board="jetson", tegra=True, rt=True
         (dev / "dri").mkdir(parents=True, exist_ok=True)
 
 
+def check_sensor_fusion() -> int:
+    """M1 多传感器融合 + 分频信道处理 (plan_v5 Sprint M)。
+
+    守护: 组合信号分频解复用; 信道串扰 <-20dB; 处理样本暂存 + 发 Bus。
+    """
+    from .perception.sensor_fusion import (
+        ChannelSpec, SensorFusionHub, fusion_demo,
+    )
+
+    r = fusion_demo()
+    assert r["crosstalk_video_db"] < -20.0, \
+        f"video 信道串扰 {r['crosstalk_video_db']:.1f}dB 未达标"
+    assert r["crosstalk_microwave_db"] < -20.0, \
+        f"microwave 信道串扰 {r['crosstalk_microwave_db']:.1f}dB 未达标"
+    hub = SensorFusionHub([ChannelSpec("video", 300, 400, 1000)])
+    t = np.arange(0, 0.1, 1.0 / 8000)
+    hub.ingest(0.0, np.sin(2 * np.pi * 300 * t), 8000.0)
+    assert len(hub.buffer) == 1, "处理样本应暂存进 RingBuffer"
+    print(f"多传感器分频: 串扰 video={r['crosstalk_video_db']:.1f}dB / "
+          f"microwave={r['crosstalk_microwave_db']:.1f}dB (<-20dB ✓)")
+    return 0
+
+
+def check_slam() -> int:
+    """M2 SLAM 三维坐标 + 时间戳 (plan_v5 Sprint M)。
+
+    守护: 带噪仿真位姿误差收敛 <0.3m; 路标增广; 时间戳单调。
+    """
+    from .perception.slam import EKFSLAM2D, slam_demo
+
+    r = slam_demo()
+    assert r["final_position_error_m"] < 0.3, \
+        f"SLAM 位姿误差 {r['final_position_error_m']:.3f}m 未收敛"
+    slam = EKFSLAM2D()
+    slam.update_landmark("a", 2.0, 0.3, timestamp_s=0.1)
+    try:
+        slam.update_landmark("a", 2.0, 0.3, timestamp_s=0.05)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("时间戳倒退未被拒绝")
+    print(f"SLAM: 50 步位姿误差 {r['final_position_error_m']:.3f}m (<0.3m ✓), "
+          f"路标 {len(r['landmarks'])} 个")
+    return 0
+
+
+def check_cognitive_hub() -> int:
+    """M4 认知中枢四要素 (plan_v5 Sprint M)。
+
+    守护: 记录/分析/计算/规划/记忆 五能力; 四要素完整性; 时间衰减召回。
+    """
+    from .cognition.cognitive_hub import CognitiveHub, EventRecord, cognitive_demo
+
+    r = cognitive_demo()
+    assert r["analysis"]["total"] == 3
+    assert r["plan_climb_hold"] == ["load"], "规则式规划应只缺 load"
+    assert r["recall_order"][0] == "handover", "记忆召回应按时间衰减排序"
+    hub = CognitiveHub()
+    try:
+        hub.record_event(EventRecord(-1.0, np.zeros(3), "a", "b"))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("负时间戳事件未被拒绝")
+    print(f"认知中枢: {r['analysis']['total']} 事件, 事件率 "
+          f"{r['stats']['event_rate_hz']:.2f}Hz, 规划缺口 {r['plan_climb_hold']}")
+    return 0
+
+
+def check_vla_v2a() -> int:
+    """M3 V-to-action 纯视觉决策路径 (plan_v5 Sprint M)。
+
+    守护: v2a ≡ vla(lang=None) 等价; 语言通道生效; modality="v2a" 时
+    min_block_size 不含语言 token。
+    """
+    from .models.vla_config import VLAConfig
+    from .models.vla_v2a import VLAPolicy, v2a_demo
+
+    r = v2a_demo()
+    assert r["v2a_equals_vla_none"], "v2a 与 vla(None) 不等价"
+    assert r["min_block_size_v2a"] == r["min_block_size_vla"] - VLAConfig.LANG_TOKENS
+    cfg = VLAConfig(modality="v2a")
+    p = VLAPolicy(cfg)
+    v = np.zeros((cfg.num_views, cfg.vision_embd))
+    assert p.infer_v2a(v, np.zeros(cfg.state_dim)).shape == \
+        (cfg.action_horizon, cfg.action_dim)
+    print(f"V2A: 等价路径 ✓, min_block_size v2a={r['min_block_size_v2a']} "
+          f"< vla={r['min_block_size_vla']}")
+    return 0
+
+
 def check_cli_smoke() -> int:
     """CLI 子命令冒烟 — 覆盖 v0.5 修复的 GBK 输出崩溃回归。"""
     import os
@@ -887,7 +978,8 @@ def check_cli_smoke() -> int:
     # v0.7: 新增子命令一并冒烟 (全部走小规模默认, 保证 CI 时长可控)
     for cmd in ("contracts", "safety", "sim", "sim2real", "biped", "nanogpt", "dr",
                 "platform", "soft", "foc", "hand", "cert", "bench", "lifelong",
-                "real", "wholebody", "gui --once", "train --algo ppo --iters 80"):
+                "real", "wholebody", "gui --once", "train --algo ppo --iters 80",
+                "fusion-demo", "slam-demo", "cog-demo"):
         r = subprocess.run([sys.executable, "-m", "embodied_ai.cli", *cmd.split()],
                            capture_output=True, cwd=str(REPO_ROOT), env=env)
         assert r.returncode == 0, (
@@ -948,6 +1040,10 @@ CHECKS: List[Tuple[str, Callable[[], int]]] = [
     ("policy_loading", check_policy_loading),      # 断点2: ckpt→policy→controller 接线
     ("runtime_bus", check_runtime_bus),            # 断点1: 最小 Bus 抽象 (层间消息化)
     ("mission_manager", check_mission_manager),    # 断点3: OS 中枢 (指令→状态机→20Hz环)
+    ("sensor_fusion", check_sensor_fusion),        # M1: 多传感器分频信道 (plan_v5)
+    ("slam", check_slam),                          # M2: 三维坐标+时间戳 (plan_v5)
+    ("vla_v2a", check_vla_v2a),                    # M3: V-to-action 等价路径 (plan_v5)
+    ("cognitive_hub", check_cognitive_hub),        # M4: 四要素认知中枢 (plan_v5)
     ("cli_smoke", check_cli_smoke),
 ]
 

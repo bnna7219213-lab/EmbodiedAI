@@ -523,6 +523,48 @@ def cmd_soft(args):
     return _emit_result("柔性体", soft_body_demo())
 
 
+# --------------------------------------------------------------------------- #
+# plan_v5 Sprint M 新增: 感知/认知 demo
+# --------------------------------------------------------------------------- #
+def cmd_fusion_demo(args):
+    """M1 多传感器融合 + 分频信道处理 (provenance=synthetic)。"""
+    console.banner("M1 多传感器融合 + 分频信道处理")
+    from .perception.sensor_fusion import fusion_demo
+
+    r = fusion_demo()
+    console.emit(f"    信道                            {r['channels']}")
+    console.emit(f"    video 信道串扰                  {r['crosstalk_video_db']:.1f} dB (<-20dB)")
+    console.emit(f"    microwave 信道串扰              {r['crosstalk_microwave_db']:.1f} dB (<-20dB)")
+    return _emit_result("分频融合", {"ok": True})
+
+
+def cmd_slam_demo(args):
+    """M2 SLAM 三维坐标 + 时间戳。"""
+    console.banner("M2 SLAM (EKF 平面 + z 直通)")
+    from .perception.slam import slam_demo
+
+    r = slam_demo()
+    console.emit(f"    50 步后位姿误差                 {r['final_position_error_m']:.3f} m (<0.3m)")
+    console.emit(f"    路标估计                        {r['landmarks']}")
+    console.emit(f"    位姿快照                        {r['snapshots']} 条")
+    return _emit_result("SLAM", {"ok": True})
+
+
+def cmd_cog_demo(args):
+    """M4 认知中枢 — 四要素 (时间/地点/人物/事情)。"""
+    console.banner("M4 认知中枢 (记录/分析/计算/规划/记忆)")
+    from .cognition.cognitive_hub import cognitive_demo
+
+    r = cognitive_demo()
+    a = r["analysis"]
+    console.emit(f"    记录总数                        {a['total']}")
+    console.emit(f"    人物频次                        {a['by_actor']}")
+    console.emit(f"    事件率                          {r['stats']['event_rate_hz']:.2f} Hz")
+    console.emit(f"    规划缺口 pick/climb_hold        {r['plan_pick']} / {r['plan_climb_hold']}")
+    console.emit(f"    记忆召回序                      {r['recall_order']}")
+    return _emit_result("认知中枢", {"ok": True})
+
+
 def cmd_wholebody(args):
     """G9 双足 3D 全身控制。"""
     console.banner("G9 双足 3D 全身控制 (3D ZMP + 6-DoF IK)")
@@ -945,6 +987,14 @@ def _register_all() -> None:
     R("wholebody", "G9 双足 3D 全身控制 (3D ZMP + IK)", group="仿真", since="v0.7",
       add_args=lambda p: p.add_argument("--steps", type=int, default=4),
       examples=["embodied-audit wholebody --steps 4"])(cmd_wholebody)
+
+    # ---------------- 感知 / 认知 (plan_v5 Sprint M) ----------------
+    R("fusion-demo", "M1 多传感器融合 + 分频信道处理 (视频/微波)", group="感知/认知",
+      since="v0.9", examples=["embodied-audit fusion-demo"])(cmd_fusion_demo)
+    R("slam-demo", "M2 SLAM 三维坐标 + 时间戳 (EKF 平面+z 直通)", group="感知/认知",
+      since="v0.9", examples=["embodied-audit slam-demo"])(cmd_slam_demo)
+    R("cog-demo", "M4 认知中枢四要素 (时间/地点/人物/事情)", group="感知/认知",
+      since="v0.9", examples=["embodied-audit cog-demo"])(cmd_cog_demo)
 
     # ---------------- 训练 / 模型 ----------------
     R("train", "训练管线自检 (BC/PPO/SAC/扩散)", group="训练", since="v0.7",
