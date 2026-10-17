@@ -4,6 +4,55 @@
 
 ---
 
+## v1.3 (2026-10-17) — 架构设计文档 + e-nose 标定 + V2L 几何验证 + 真机 E2E 闭环规划
+
+> 文档: [docs/19-vla-ssh-architecture-and-verification.md](docs/19-vla-ssh-architecture-and-verification.md)
+> —— VLA 双路径 / SSH 双通道 / 信号分频·触觉融合·空间智能决策链路 / 两套模拟→真实验证方案 / C 栈接真机 E2E 规划。
+> 本轮把两项模拟数据（化学生化传感、V2L 论证）升级为**可验证的真实方案**，并给出真机接入执行骨架。
+
+| ID | 交付 | 验收 |
+|---|---|---|
+| **d1** | `perception/chem_calibration.py` e-nose 真实标定：多点标定曲线 + 交叉敏感矩阵解耦 + 温湿度/漂移监控 + 验收门禁（RMSE/R²/串扰泄漏） | 已知模型恢复误差<15%；交叉补偿降串扰；30% 漂移触发再标定；**欠定系统拒绝**（修复"精确插值→门禁恒过"自证 bug）；`test_chem_calibration.py` 17 项 |
+| **d2** | `center/geometry_verification.py` V2L 空间几何演算验证：独立复算 + 真值场景（对齐/正交/反向）+ 变异负对照 | 3 真值场景结论全对；复算逐步核对（容差锚定报告精度 5e-4，修复 TOL=1e-6 全误报）；变异单步必检出；`test_geometry_verification.py` 17 项 |
+| **d3** | `hil/e2e_closed_loop.py` 真机 E2E 闭环测试支架：5 阶段门（S1 通电→S2 感知→S3 决策→S4 运动→S5 任务）+ 时延预算核对 + ESTOP + `MockHardwareChannel` | 跳阶段拒绝；80ms 时延必 FAIL 50ms 契约（判据非恒过）；ESTOP 中断；`test_e2e_closed_loop.py` 18 项 |
+| **d4-d6** | verify +3 项（chem_calibration/geometry_verification/e2e_closed_loop）；docs/19 架构设计文档；README/CHANGELOG/版本 1.3.0 同步 | **verify 45/45 PASS**（v1.2: 42）；pytest 全绿 |
+
+**本轮修复的"自证当验收"陷阱**（延续 v1.1 诚实化路线）：
+1. e-nose 欠定标定精确插值 → 残差恒 0 门禁恒过 → 强制超定点数；
+2. V2L 复算容差 1e-6 严于报告精度 3 位小数 → 合法论证全误报 → 锚定报告精度 5e-4；
+3. 真值场景数据分段口径错（段内方向错位）→ 场景失真 → 按 3 段×4 元素对齐。
+
+**v1.3 追加（2026-10-17 同日）— 文档细化 + 真机测试脚本 + B1 询价单**：
+
+| 项 | 交付 |
+|---|---|
+| docs/19 §9 | 触觉传感链路（EKF→滑脱→机会约束握力 PID 全参数表）+ 化学生化信号仿真（8 通道 e-nose 合成模型 / 五步融合判定链）实现细节，含 provenance 汇总 |
+| `scripts/e2e_real_robot_test.py` | 真实机器人 E2E 测试脚本（5 阶段门，mock/real 双模式，ESTOP 负对照，`--report` JSON 导出）；`tests/test_e2e_real_robot_script.py` 7 项 |
+| `scripts/b1_fab_inquiry.py` | B1 板级文件包 → 工厂打样询价单（RFQ：板规格/BOM/文件清单/10 项询价问题/诚实声明），产出 `artifacts/b1_tendon_drive_package/B1_fab_inquiry_RFQ.md`；`tests/test_b1_fab_inquiry.py` 9 项 |
+
+验收：pytest **798 passed**；verify **45/45 PASS**。
+
+---
+
+## v1.2 (2026-10-17) — Sprint N：中枢决策层(C1-C5) + OS SSH 双通道 + GUI×触觉×化学生化 + V2L 空间智能
+
+> 计划文档: [plan_v6.md](plan_v6.md)（N1-N6）。围绕"整条链路串连有缺点"补齐架构层、OS 通道、多模态感知与可解释决策。
+
+| ID | 交付 | 验收 |
+|---|---|---|
+| **N1** | `center/layer_registry.py` 层注册表单一真源（L1-L7 照旧 + P1-P5 + S + D1-D5 + **C1-C5 中枢决策栈**：信号处理/感知/记忆/nanoGPT·VLA 决策/中枢编排）；GUI `_layer_stack()` 改读注册表 | C1-C5 齐全；L1-L7 编号无增删；module_refs 全可 import；GUI 同源 |
+| **N2** | `center/center_brain.py` 中枢编排 facade：分频→触觉+EKF+化学生化→**POSE_UPDATE 发布（修复 B8 断链）**→记忆→V2L 论证→VLA 双路径→动作→四要素事件 | `hub.latest_pose()` 收到位姿；双路径 v2a/vla 正确 |
+| **N3** | `os_channel/ssh_admin.py` OS SSH 双通道（**RUNTIME=实时协作规划 / MAINTENANCE=停机维护，非遥控**）：模式状态机（仅 RUNTIME 允许运动）+ ssh/scp 命令生成 + DryRun/Subprocess 可注入 executor + 出厂初始程序烧录；`contracts/os_channel.yaml` | 状态机全转换表；维护态拒收运动指令；dry-run 命令序列；provisioning 完整 |
+| **N4** | `perception/chem_bio.py` 化学生化×触觉融合（e-nose/pH/湿度, synthetic）+ GUI routes `/api/layer_stack` `/api/tactile` `/api/chem` | dry/wet/corrosive 三场景判定；融合可复现 |
+| **N5** | `center/spatial_reasoning.py` V2L 空间智能（辅助线→演算→结论 可解释论证）+ `to_event(source="v2l")` | 论证结构完整；输入变则论证变（防恒定假论证） |
+| **N6** | CLI 组 `OS/中枢`（os-status/os-provision/center-demo/v2l-demo/chem-demo）；verify +5 项 | **verify 42/42 PASS**（v5: 37）；pytest 全绿；5 demo 可运行 |
+
+**断链修复**: POSE_UPDATE 零发布/零订阅（B8）→ CenterBrain 唯一发布口 + hub 订阅；触觉/化学生化→决策通道；V2L 论证→事件落库。
+
+**provenance**: 化学生化传感 synthetic（真实标定=待领域验证）；OS 契约 host/board assumed；V2L caption 模板化（非语言模型）。
+
+---
+
 ## v1.1 (2026-10-17) — 验收诚实化：把"绿色但无效"的判据改成能失败的判据
 
 > 起因: 对 v1.0 Sprint M 与全项目的两轮审计。结论是工程自觉度高，但风险不在
@@ -79,9 +128,17 @@
 | **M2** | `perception/slam.py` SLAM 三维坐标 + 时间戳（`EKFSLAM2D` 恒速模型 + 路标增广 + range/bearing，`PoseStore` who-pose-where-when） | 50 步位姿误差 <0.3m；时间戳单调；`slam-demo` 可运行 |
 | **M3** | `models/vla_v2a.py` VLA 双路径：`vision+language→action` 与 `vision-only→action`（V-to-action）等价（`vla_config.modality` "vla"/"v2a"，v2a 时 min_block_size 不含语言 token） | v2a ≡ vla(None) 等价守护；`test_vla_v2a.py` 11 项 |
 | **M4** | `cognition/cognitive_hub.py` 认知中枢四要素（时间/地点/人物/事情）：记录(订阅 Bus `EVENT`) / 分析 / 计算 / 规划(规则式) / 记忆(时间衰减召回) | 五能力反证；`cog-demo` 可运行 |
-| **M5** | 接线收尾：Bus Topic `SENSOR_RAW`/`POSE_UPDATE`/`EVENT`；CLI `fusion-demo`/`slam-demo`/`cog-demo`；verify +4 项 | **verify 35/35 PASS**；**pytest 580 passed**（v4: 28/28 + 441） |
+| **M5** | 接线收尾：Bus Topic `SENSOR_RAW`/`POSE_UPDATE`/`EVENT`；CLI `fusion-demo`/`slam-demo`/`cog-demo`；verify +4 项 | verify PASS；pytest 全绿（v4: 28/28 + 441） |
 
 **provenance**: 分频信道参数 synthetic（真实微波前端标定=待领域验证）；SLAM 噪声 assumed；VLAPolicy head 权重 synthetic（确定性随机投影，非训练产物）。
+
+### M6 追加 (2026-10-17) — VLA 双路径 × 认知中枢 端到端闭环
+
+| ID | 交付 | 验收 |
+|---|---|---|
+| **M6** | `cognition/closed_loop.py` `CognitiveVLALoop`：目标 → `hub.plan()` 前置序列 → `decide()` 双路径选择（有语言 `infer_vla` v+l→action / 无语言 `infer_v2a` v→action，路径标注进事件 `source`）→ `act_fn` 动作执行（回调注入）→ 四要素事件记录（地点取 SLAM `POSE_UPDATE` 位姿）→ 重 `plan()` 直到前置清空 | v2a/vla 双链路各自达成 `climb_hold`；路径计数正确；四要素事件=步数、时间戳单调；未知目标 KeyError 透传；max_steps 失控 RuntimeError；CLI `loop-demo` 可运行；verify 项 `cognitive_vla_loop` |
+
+**Sprint M 最终验收**（含 M6）: `verify --no-pytest` **36/36 PASS**；`pytest` **654 passed / 1 skipped**。
 
 ---
 
@@ -166,7 +223,38 @@
 
 ### B4 收尾 — 腱/凝胶柔体参数进制造容差 DR（2026-10-08）
 
+### ③ 数据扩充：120 → 1000+ episodes（攀岩闭环当数据引擎，2026-10-08）
+
+**评分 50 分域的最大短板**：数据仅 120 条半合成 → **1000 episodes / 18000 步**。
+
+**数据引擎**：`scripts/gen_climb_rollouts.py` — 每 episode 跑一次
+`climb_scene.run_climb_cycle`（六状态攀岩闭环），每步的 (obs, action) 带攀岩语义
+（相位模板 + 微扰），episode_meta 携带闭环的**真实计算物理量**
+（f_soft/f_rigid/v_release/com_advance/wall_contact/peak_finger...）。
+
+**产出**（`artifacts/d4_climb/climb_episodes_full.jsonl`, 9.4MB）：
+- 1000 episodes / 18000 步 / `validate_bc_dataset` **PASS**
+- provenance 如实标注：`real_fields` = 攀岩闭环真实计算；`synthetic_fields` = rgb/lang
+  程序生成（"不冒充真实示教"）
+- 多样性来源：seed 驱动域随机化（hold μ 变 → 力闭合 ε 变 → 抓握选择变）
+
+**诚实边界**：soft_ratio 等部分物理量不随 seed 变（VSA/耦合参数是常量）——
+测试如实反映（物理量有限值断言，非"必须各不相同"的假断言）。
+
+**守护**：`tests/test_climb_dataset.py` 6 项（量达标/provenance 诚实/结构合法/
+物理量有限/provenance 诚实/可加载）+ verify `climb_dataset`。
+全量 **638 passed** + verify **35/35 PASS**。
+
 ### 断点 ③ 修复：最小 MissionManager — OS 决策中枢（2026-10-08）
+
+**缺口**：无调度器/行为树/世界模型，`run()` 是 sleep 占位——审计定级 D。
+
+**交付（`runtime/mission.py`）**：MissionTemplate（4 任务模板，只用已注册技能）+ MissionState（终态不可复活）+ MissionManager（parse→状态机→驱动 20Hz 环→终态）+ Bus 事件可观测。反证全验：超时 FAILED / 安全 ABORTED / 不可识别报错 / 重复模板拒。
+
+端到端实测：`'抓起杯子放到桌上'` → pick_and_place → 2 步 → SUCCESS。
+守护：test_mission_manager.py 15 项 + verify mission_manager。
+
+
 
 **缺口**：无调度器/行为树/世界模型；`run()` 是 sleep 占位——审计定级 D。
 

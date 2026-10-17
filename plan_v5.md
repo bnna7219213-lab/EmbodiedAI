@@ -15,8 +15,8 @@
 ## 一、实测基线锚点 (2026-10-17, 本轮 Sprint M 完成后)
 
 ```
-verify --no-pytest:   35/35 PASS, RESULT=VERIFY_OK   (v4 为 28/28, 本轮 +4 项 M1-M4 + cli_smoke 扩 3 demo)
-pytest:               580 passed / 1 skipped (含 65 subtests)   (v4 为 441 passed)
+verify --no-pytest:   36/36 PASS, RESULT=VERIFY_OK   (v4 为 28/28, 本轮 +5 项 M1-M4/M6 + cli_smoke 扩 4 demo)
+pytest:               654 passed / 1 skipped (含 66 subtests)   (v4 为 441 passed)
 新增源码:             src/embodied_ai/perception/sensor_fusion.py (M1 分频信道融合)
                       src/embodied_ai/perception/slam.py          (M2 EKF-SLAM + PoseStore)
                       src/embodied_ai/models/vla_v2a.py           (M3 V-to-action 推理封装)
@@ -50,6 +50,26 @@ pytest:               580 passed / 1 skipped (含 65 subtests)   (v4 为 441 pas
 | **M5** | 接线收尾 | Bus Topic `SENSOR_RAW`/`POSE_UPDATE`/`EVENT` + schema；CLI 注册 `fusion-demo`/`slam-demo`/`cog-demo`（`register_command`）；verify 新增 `sensor_fusion`/`slam`/`vla_v2a`/`cognitive_hub` 4 项 + cli_smoke 扩 3 demo；README/CHANGELOG 口径同步（28→35 / 441→580） | verify **35/35**；pytest 全绿；`test_cli_registry.py` 无孤儿；README/CHANGELOG/plan_v5 四方数字一致 | 1d | 无 |
 
 **Sprint M 准出声明**: "机器人端补齐多传感器融合信道处理、VLA 双路径（V+L 与 V-to-action）、SLAM 三维坐标+时间戳、认知中枢四要素五能力；verify 35/35 + pytest 580 全绿 + 三个 demo 可运行。"
+
+### M6 — VLA 双路径 × 认知中枢 端到端闭环（2026-10-17 追加）
+
+> 用户追加需求："将 VLA 双路径逻辑接入认知中枢，实现端到端闭环"。
+> M3（VLA 双路径）与 M4（认知中枢）此前是两个孤岛，M6 把二者焊成闭环。
+
+| ID | 任务 | 剩余工作 | 验收 DoD | 量级 | 阻塞 |
+|---|---|---|---|---|---|
+| **M6** | VLA 双路径 × 认知中枢端到端闭环 | `cognition/closed_loop.py`：`CognitiveVLALoop` — 目标 → `hub.plan()` 前置序列 → 逐步 `decide()`（有语言走 `infer_vla` / 无语言走 `infer_v2a`，路径标注进事件 `source`）→ `act_fn` 回调执行 → `record_event` 四要素（时间/地点/人物/事情，地点取 SLAM `POSE_UPDATE` 位姿，缺位姿诚实标 `assumed_zero`）→ 重 `plan()` 直到达成；`loop_demo()` 双链路对照 | v2a/vla 两条链路各自跑通 `climb_hold`（approach→grasp→load）；路径计数 `{"v2a":3}`/`{"vla":3}`；四要素事件数=步数且时间戳单调；未知目标 KeyError 透传；max_steps 失控守护 RuntimeError；`loop-demo` 可运行；`test_cognitive_vla_loop.py` 16 项全绿 | 1d | 无 (M3+M4 已完成) |
+
+**M6 闭环数据流**:
+```
+目标 goal_thing → hub.plan() 尚缺前置 → step(thing):
+  decide() ──有语言──> infer_vla (v+l→action)  路径="vla"
+          └─无语言──> infer_v2a (v→action)     路径="v2a"
+  → act_fn(thing, action) 动作执行 (回调注入: 仿真/真机)
+  → EventRecord(时间=时钟, 地点=SLAM 位姿, 人物=actor, 事情=thing)
+     └─ Bus EVENT → hub 情景记忆 (单一记录点)
+  → 重 plan() …直到前置清空 = 目标达成
+```
 
 ---
 

@@ -4,10 +4,23 @@
 >
 > **定位**: 不拼装现有方案，从零构建"AI 神经网络模型 → PCB 硬件 → 电机驱动 → 具身智能体"全链条的端到端研发计划。
 >
-> **版本**: v1.1 | 更新日期: 2026-10-17
+> **版本**: v1.3 | 更新日期: 2026-10-17
 >
 > **一键验收**: `scripts\verify.bat` (cmd) / `.\scripts\verify.ps1` (PowerShell) → `RESULT=VERIFY_OK`
-> 或 `python -m embodied_ai.cli verify` (**35 项**聚合自检, 退出码即结论; 含 pytest = 36 项 + 632 passed, v1.1 实测)
+> 或 `python -m embodied_ai.cli verify` (**45 项**聚合自检, 退出码即结论; 含 pytest = 46 项, v1.3 实测)
+>
+> **v1.3 主题**: [架构设计文档 docs/19](docs/19-vla-ssh-architecture-and-verification.md)
+> —— VLA 双路径 / SSH 双通道 / 信号分频·触觉融合·空间智能决策链路的架构说明;
+> **e-nose 真实标定方案**（多点标定/交叉敏感解耦/漂移门禁）与 **V2L 空间几何演算
+> 验证**（独立复算/真值场景/变异负对照）把模拟数据升级为可验证的真实方案;
+> **真机 E2E 闭环测试规划**（5 阶段门 + 时延预算 + OS 维护配合）。详见
+> [CHANGELOG v1.3](CHANGELOG.md)。
+>
+> **v1.2 主题**: Sprint N — 架构补**中枢决策层 C1-C5**（信号处理/感知/记忆/
+> nanoGPT·VLA 决策/中枢编排, 层注册表单一真源）+ 机器人 Linux OS **SSH 双通道**
+> (RUNTIME 实时协作规划 / MAINTENANCE 停机维护, 非遥控) + GUI×触觉×**化学生化**
+> 传感融合 + **V2L 空间智能**可解释决策 + 端到端链路串联(修 POSE_UPDATE 断链)。
+> 详见 [plan_v6.md](plan_v6.md) 与 [CHANGELOG v1.2](CHANGELOG.md)。
 >
 > **v1.1 主题**: 验收**诚实化** — 把"绿色但无效"的判据改成能失败的判据
 > (V2A 等价性不再自我认证 / SLAM 补噪声失配负对照 / 分频串扰度量修时间基),
