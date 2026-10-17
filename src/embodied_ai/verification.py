@@ -301,6 +301,33 @@ def check_mission_manager() -> int:
     return 0
 
 
+def check_tactile_grip_loop() -> int:
+    """④ 触觉闭环守护: EKF→机会约束握力进 20Hz 环。"""
+    import numpy as np
+
+    from .control.tactile_grip_loop import (TactileGripLoop,
+                                             synth_tactile_obs)
+    from .control.household_robot_system import make_controller
+
+    obs_seq = synth_tactile_obs(mu_true=0.75, f_n=40.0, n_steps=100, seed=0)
+    ctrl = make_controller()
+    loop = TactileGripLoop(ctrl, None, ekf_dt=0.05)
+    for obs in obs_seq:
+        ctrl.step(obs)
+
+    # μ̂ 收敛
+    assert abs(loop.last_mu_hat - 0.75) < 0.05, \
+        f"μ̂={loop.last_mu_hat:.4f} 未收敛到 0.75"
+
+    # 握力非零 (闭环接通)
+    assert loop.last_f_n_setpoint > 0, "握力设定值为零"
+
+    # 机会约束可行 (EKF 收敛后 denom > 0.05)
+    denom = loop.last_mu_hat - 2.0 * loop.last_sigma_mu
+    assert denom > 0.05, f"denom={denom:.3f} — 收敛后应可行"
+    return 0
+
+
 def check_runtime_bus() -> int:
     """断点 1 守护: 最小 Bus 抽象 (层间消息化)。
 
@@ -1032,6 +1059,201 @@ def check_vla_v2a() -> int:
     return 0
 
 
+def check_cognitive_vla_loop() -> int:
+    """M6 VLA 双路径 × 认知中枢 端到端闭环 (plan_v5 Sprint M)。
+
+    守护: 无语言走 v2a / 有语言走 vla; 闭环跑到目标达成; 四要素事件齐全;
+    未知目标 KeyError 透传; max_steps 失控守护。
+    """
+    from .cognition.cognitive_hub import CognitiveHub
+    from .cognition.closed_loop import CognitiveVLALoop, loop_demo
+    from .models.vla_config import VLAConfig
+
+    r = loop_demo()
+    assert r["v2a"]["goal_reached"] and r["vla"]["goal_reached"]
+    assert r["v2a"]["paths"] == {"v2a": 3}, f"v2a 路径标注错: {r['v2a']['paths']}"
+    assert r["vla"]["paths"] == {"vla": 3}, f"vla 路径标注错: {r['vla']['paths']}"
+    assert r["v2a"]["events"] == 3 and r["vla"]["events"] == 3
+    cfg = VLAConfig(modality="vla")
+    loop = CognitiveVLALoop(CognitiveHub(), cfg=cfg)
+    rng = np.random.default_rng(0)
+    v = rng.normal(size=(cfg.num_views, cfg.vision_embd))
+    s = rng.normal(size=cfg.state_dim)
+    try:
+        loop.run_until_goal("nonexistent", v, s, None)
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("未知目标未透传 KeyError")
+    try:
+        loop.run_until_goal("climb_hold", v, s, None, max_steps=1)
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError("max_steps 失控未被守护")
+    print(f"闭环: v2a/vla 双链路达成 ✓, 四要素事件 {r['v2a']['events']}×2 条")
+    return 0
+
+
+def check_layer_registry() -> int:
+    """N1 层注册表 (plan_v6 Sprint N)。
+
+    守护: C1-C5 中枢决策层齐全; L1-L7 编号不被增删; module_refs 可 import;
+    GUI _layer_stack 与注册表同源。
+    """
+    from .center.layer_registry import as_dict, validate_registry
+    from .gui.server import _layer_stack
+
+    assert validate_registry() == 0
+    assert _layer_stack() == as_dict(), "GUI 层清单与注册表漂移"
+    print("层注册表: L1-L7 + P1-P5 + S + D1-D5 + C1-C5 ✓")
+    return 0
+
+
+def check_center_brain() -> int:
+    """N2 中枢编排 (plan_v6 Sprint N)。
+
+    守护: POSE_UPDATE 断链修复 (hub 收到位姿); 双路径选择; 四要素事件。
+    """
+    from .center.center_brain import CenterBrain
+    from .cognition.cognitive_hub import CognitiveHub
+    from .runtime.bus import InProcessBus
+
+    bus = InProcessBus()
+    hub = CognitiveHub(bus=bus)
+    brain = CenterBrain(bus=bus, hub=hub)
+    out = brain.run_demo()
+    assert out["paths"] == ["v2a", "vla", "v2a"], f"双路径选择错: {out['paths']}"
+    assert out["events"] == 3
+    assert out["pose_seen_by_hub"] == [2.0, 0.5, 0.0], "POSE_UPDATE 断链未修复"
+    print(f"中枢编排: 双路径 {out['paths']}, POSE_UPDATE→hub ✓, "
+          f"四要素事件 {out['events']} 条")
+    return 0
+
+
+def check_os_channel() -> int:
+    """N3 OS SSH 双通道 (plan_v6 Sprint N)。
+
+    守护: 状态机流转; 维护态禁运动 (维护通道绝不遥控); dry-run 命令序列。
+    """
+    from .os_channel import DryRunExecutor, ModeState, OsChannelAdmin
+
+    admin = OsChannelAdmin("robot.local", executor=DryRunExecutor())
+    admin.enter_maintenance("verify check")
+    assert admin.mode.state is ModeState.MAINTENANCE
+    assert not admin.mode.can_send_motion(), "维护态必须禁运动"
+    admin.pull_debug_logs("/var/log/embodied/")
+    admin.provision_factory_program("cognition")
+    assert admin.mode.state is ModeState.PROVISIONED
+    admin.return_to_runtime()
+    assert admin.mode.state is ModeState.RUNTIME
+    kinds = {a[0] for a in admin.executor.recorded}
+    assert "ssh" in kinds and "scp" in kinds
+    print(f"OS 通道: 全流转 ✓, 维护态禁运动 ✓, 命令 {sorted(kinds)}")
+    return 0
+
+
+def check_chem_bio() -> int:
+    """N4 化学生化传感融合 (plan_v6 Sprint N)。
+
+    守护: 三场景表面状态判定 (dry/wet/corrosive); 融合可复现。
+    """
+    from .perception.chem_bio import chem_demo
+
+    out = chem_demo()
+    assert out["dry_metal"]["surface"] == "dry"
+    assert out["wet_organic"]["surface"] == "wet"
+    assert out["corrosive"]["surface"] == "corrosive"
+    print(f"化学生化融合: dry/wet/corrosive 三场景 ✓ (provenance=synthetic)")
+    return 0
+
+
+def check_spatial_reasoning() -> int:
+    """N5 V2L 空间智能 (plan_v6 Sprint N)。
+
+    守护: 辅助线/推演/结论结构完整; 输入变则论证变 (防恒定假论证)。
+    """
+    import numpy as np
+    from .center.spatial_reasoning import SpatialReasoner
+
+    r = SpatialReasoner()
+    rng = np.random.default_rng(4)
+    a1 = r.argue(rng.normal(size=12), np.array([1.0, 0.0, 0.0]))
+    a2 = r.argue(rng.normal(size=12), np.array([0.0, 1.0, 0.0]))
+    assert len(a1.auxiliary_hypotheses) >= 3 and len(a1.derivation_steps) >= 3
+    assert a1.conclusion and a1.language_caption
+    assert a1.conclusion != a2.conclusion or \
+        not np.allclose(a1.decision, a2.decision), "V2L 论证恒定 — 假论证"
+    print(f"V2L 空间论证: 辅助线 {len(a1.auxiliary_hypotheses)} 条 / "
+          f"推演 {len(a1.derivation_steps)} 步 ✓")
+    return 0
+
+
+def check_chem_calibration() -> int:
+    """d1 e-nose 真实标定方案 (plan_v6 后续)。
+
+    守护: 多点标定门禁可失败; 交叉补偿降串扰; 漂移触发再标定;
+    欠定系统被拒绝 (防门禁恒过)。
+    """
+    from .perception.chem_calibration import (
+        EnoseCalibrator, calibration_demo, make_synthetic_calibration_set,
+    )
+
+    r = calibration_demo()
+    assert r["gate_passed"] and r["drift_detected"]
+    assert r["a_recovery_max_err"] < 0.15
+    # 欠定拒绝反证: 恰定系统 (点数=参数数) 必须抛错
+    pts, _ = make_synthetic_calibration_set(n_points=4, n_gases=3)
+    try:
+        EnoseCalibrator().fit(pts)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("欠定标定未被拒绝 — 门禁会恒过")
+    print(f"e-nose 标定: 门禁✓ 漂移✓ 欠定拒绝✓ (mean R²={r['mean_r2']})")
+    return 0
+
+
+def check_geometry_verification() -> int:
+    """d2 V2L 空间几何演算验证 (plan_v6 后续)。
+
+    守护: 独立复算; 真值场景结论正确; 变异负对照必检出。
+    """
+    from .center.geometry_verification import geometry_verification_demo
+
+    r = geometry_verification_demo()
+    assert r["all_truth_verify_pass"], "真值场景复算失败"
+    assert r["all_truth_conclusions_right"], "真值场景结论错"
+    assert r["clean_pass"] and r["mutation_detected"], "变异负对照未检出"
+    print(f"V2L 几何验证: 3 真值场景 ✓, 变异检出 {r['mutation_detected']} ✓")
+    return 0
+
+
+def check_e2e_closed_loop() -> int:
+    """d3 真实硬件 E2E 闭环测试支架 (plan_v6 后续)。
+
+    守护: 阶段门推进纪律; 时延预算判据可失败; ESTOP 中断。
+    """
+    from .hil.e2e_closed_loop import (
+        E2EClosedLoopHarness, E2EPhase, MockHardwareChannel, e2e_demo,
+    )
+
+    r = e2e_demo()
+    assert r["all_pass"] and r["reached"] == "done"
+    assert r["n_phases_done"] == 5
+    # 负对照: 超预算必须 FAIL
+    h = E2EClosedLoopHarness(channel=MockHardwareChannel(latency_ms=80.0),
+                             latency_budget_ms=50.0)
+    for phase in (E2EPhase.S1_POWER_ON, E2EPhase.S2_PERCEPTION,
+                  E2EPhase.S3_DECISION):
+        h.run_phase(phase)
+    rec = h.run_phase(E2EPhase.S4_MOTION)
+    assert not rec.passed, "80ms 时延不应过 50ms 预算 (判据恒过)"
+    print(f"E2E 支架: 5 阶段全通 ✓, 时延负对照 FAIL ✓ "
+          f"(worst={r['s4_latency_worst_ms']:.1f}ms)")
+    return 0
+
+
 def check_cli_smoke() -> int:
     """CLI 子命令冒烟 — 覆盖 v0.5 修复的 GBK 输出崩溃回归。"""
     import os
@@ -1042,7 +1264,9 @@ def check_cli_smoke() -> int:
     for cmd in ("contracts", "safety", "sim", "sim2real", "biped", "nanogpt", "dr",
                 "platform", "soft", "foc", "hand", "cert", "bench", "lifelong",
                 "real", "wholebody", "gui --once", "train --algo ppo --iters 80",
-                "fusion-demo", "slam-demo", "cog-demo"):
+                "fusion-demo", "slam-demo", "cog-demo", "loop-demo",
+                "os-status", "os-provision", "center-demo", "v2l-demo",
+                "chem-demo"):
         r = subprocess.run([sys.executable, "-m", "embodied_ai.cli", *cmd.split()],
                            capture_output=True, cwd=str(REPO_ROOT), env=env)
         assert r.returncode == 0, (
@@ -1102,11 +1326,21 @@ CHECKS: List[Tuple[str, Callable[[], int]]] = [
     ("dual_track_gaps", check_dual_track_gaps),    # G10/G7/G2 双轨缺口守护
     ("policy_loading", check_policy_loading),      # 断点2: ckpt→policy→controller 接线
     ("runtime_bus", check_runtime_bus),            # 断点1: 最小 Bus 抽象 (层间消息化)
+    ("tactile_grip_loop", check_tactile_grip_loop), # ④: EKF→握力进 20Hz 环
     ("mission_manager", check_mission_manager),    # 断点3: OS 中枢 (指令→状态机→20Hz环)
     ("sensor_fusion", check_sensor_fusion),        # M1: 多传感器分频信道 (plan_v5)
     ("slam", check_slam),                          # M2: 三维坐标+时间戳 (plan_v5)
     ("vla_v2a", check_vla_v2a),                    # M3: V-to-action 等价路径 (plan_v5)
     ("cognitive_hub", check_cognitive_hub),        # M4: 四要素认知中枢 (plan_v5)
+    ("cognitive_vla_loop", check_cognitive_vla_loop),  # M6: VLA 双路径×认知中枢闭环 (plan_v5)
+    ("layer_registry", check_layer_registry),      # N1: 层注册表 L+C 栈 (plan_v6)
+    ("center_brain", check_center_brain),          # N2: 中枢编排+POSE_UPDATE 断链修复 (plan_v6)
+    ("os_channel", check_os_channel),              # N3: OS SSH 双通道 (plan_v6)
+    ("chem_bio", check_chem_bio),                  # N4: 化学生化传感融合 (plan_v6)
+    ("spatial_reasoning", check_spatial_reasoning),  # N5: V2L 空间智能 (plan_v6)
+    ("chem_calibration", check_chem_calibration),  # d1: e-nose 真实标定方案 (docs/19)
+    ("geometry_verification", check_geometry_verification),  # d2: V2L 几何演算验证 (docs/19)
+    ("e2e_closed_loop", check_e2e_closed_loop),    # d3: 真机 E2E 闭环测试支架 (docs/19)
     ("cli_smoke", check_cli_smoke),
 ]
 

@@ -52,18 +52,13 @@ class DashboardState:
 
 # --------------------------------------------------------------------------- #
 def _layer_stack() -> Dict[str, Any]:
-    return {
-        "L7": "用户交互 (本 Web 仪表盘 / 自然语言)",
-        "L6": "任务规划 (VLA + LLM, ~1Hz)",
-        "L5": "接触序列 (MCTS + DR, 2-10Hz)",
-        "L4": "运动控制 (RL Actor / PPO / SAC / Diffusion, 20Hz)",
-        "L3": "反射伺服 (阻抗 + 触觉反射, 1kHz)",
-        "L2": "电机驱动 (FOC + SVPWM + 硬件关断, 10kHz)",
-        "L1": "物理执行 (电机 + 减速器 + 传感器)",
-        "P1-P5": "物理栈: 电源 / 感知 / 决策 / 执行 / 互联 PCB",
-        "S": "横切安全层 (<1µs 硬件关断 + STL + ISO13482)",
-        "D": "横切数据栈 (遥测 → DR → RL 飞轮)",
-    }
+    """层清单 — 单一真源是 center.layer_registry (plan_v6 N1)。
+
+    此前此函数硬编码 L1-L7 文案, 与 docs/architecture-overview.md §5 各自漂移;
+    现改为读注册表, GUI/文档/测试同源。返回形状不变 (id → 说明)。
+    """
+    from ..center.layer_registry import as_dict
+    return as_dict()
 
 
 def _module_status() -> Dict[str, str]:
@@ -205,6 +200,35 @@ def routes(state: DashboardState) -> Dict[str, Callable[[Dict[str, list]], Any]]
             return {"ok": False, "error": f"未知指令: {cmd}"}
         return {"ok": True, "mode": state.mode}
 
+    def api_layer_stack(_q):
+        """层清单 — 走 center.layer_registry 单一真源 (plan_v6 N1)。"""
+        from ..center.layer_registry import layers_by_stack, validate_registry
+        validate_registry()
+        by = layers_by_stack()
+        return {"layers": _layer_stack(),
+                "by_stack": {k: [s.id for s in v] for k, v in by.items()}}
+
+    def api_tactile(_q):
+        """触觉闭环状态: EKF μ̂ / 滑脱 / 握力 (GUI×触觉反馈, plan_v6 N4)。"""
+        from ..perception.multirate_ekf import MultiRateEKF
+        ekf = state.cached("tactile_ekf", lambda: MultiRateEKF(
+            mu_prior_mean=0.55, mu_prior_std=0.15, f_n=40.0))
+        ekf.predict()
+        return {"mu_hat": round(float(ekf.x[1]), 4),
+                "f_t": round(float(ekf.x[0]), 4),
+                "slip_risk": bool(ekf.x[0] >= ekf.x[1] * ekf.f_n),
+                "source": "multirate_ekf (20Hz 视觉 / 100Hz 触觉)"}
+
+    def api_chem(_q):
+        """化学生化传感 + 触觉融合 (plan_v6 N4, provenance=synthetic)。"""
+        from ..perception.chem_bio import ChemBioSensor, ChemTactileFusion
+        sensor = state.cached("chem_sensor", lambda: ChemBioSensor(seed=7))
+        fusion = ChemTactileFusion()
+        vec = sensor.read(material_hint="metal", wet=False, ph=7.0)
+        est = fusion.fuse(vec)
+        return {"chem": vec.to_dict(), "estimate": est.to_dict(),
+                "provenance": "synthetic (真实 e-nose/pH 标定=待领域验证)"}
+
     return {
         "/api/status": api_status,
         "/api/safety": api_safety,
@@ -213,6 +237,9 @@ def routes(state: DashboardState) -> Dict[str, Callable[[Dict[str, list]], Any]]
         "/api/hand": api_hand,
         "/api/platform": api_platform,
         "/api/command": api_command,
+        "/api/layer_stack": api_layer_stack,
+        "/api/tactile": api_tactile,
+        "/api/chem": api_chem,
     }
 
 

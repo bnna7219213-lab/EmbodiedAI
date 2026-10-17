@@ -568,6 +568,100 @@ def cmd_cog_demo(args):
     return _emit_result("认知中枢", {"ok": True})
 
 
+def cmd_loop_demo(args):
+    """M6 VLA 双路径 × 认知中枢 端到端闭环。"""
+    console.banner("M6 端到端闭环 (VLA 双路径 → 事件记录 → 规划)")
+    from .cognition.closed_loop import loop_demo
+
+    r = loop_demo()
+    for label, name in (("v2a", "v→action (纯视觉)  "),
+                        ("vla", "v+l→action (视觉+语言)")):
+        d = r[label]
+        console.emit(f"    {name}  达成={d['goal_reached']} "
+                     f"步骤={d['steps']} 路径计数={d['paths']}")
+    console.emit(f"    四要素事件 (每链路)             {r['v2a']['events']} 条")
+    return _emit_result("端到端闭环", {"ok": True})
+
+
+# --------------------------------------------------------------------------- #
+# plan_v6 Sprint N 新增: OS/中枢 demo
+# --------------------------------------------------------------------------- #
+def cmd_os_status(args):
+    """N3 OS SSH 双通道状态 (RUNTIME 协作规划 / MAINTENANCE 停机维护)。"""
+    console.banner("N3 OS 通道状态 (dry-run)")
+    from .os_channel import DryRunExecutor, ModeState, OsChannelAdmin
+
+    admin = OsChannelAdmin("embodied-robot.local", executor=DryRunExecutor())
+    admin.enter_maintenance("os-status 演示: 修历史 bug")
+    s = admin.status()
+    console.emit(f"    模式                            {s['mode']}")
+    console.emit(f"    通道                            {s['channel']} (SSH 维护, 非遥控)")
+    console.emit(f"    允许运动                        {s['can_send_motion']} (维护态禁运动)")
+    admin.return_to_runtime()
+    console.emit(f"    回运行态                        {admin.mode.state.value}")
+    return _emit_result("OS 通道", {"ok": True})
+
+
+def cmd_os_provision(args):
+    """N3 出厂初始程序烧录 (认知本体 + 启动清单, dry-run)。"""
+    console.banner("N3 出厂初始程序烧录 (dry-run)")
+    from .os_channel import DryRunExecutor, ModeState, OsChannelAdmin
+
+    admin = OsChannelAdmin("embodied-robot.local", executor=DryRunExecutor())
+    admin.enter_maintenance("provision 演示")
+    admin.provision_factory_program("cognition_v2")
+    s = admin.status()
+    console.emit(f"    烧录后模式                      {s['mode']}")
+    console.emit(f"    命令序列                        {len(s['executed'])} 条 (ssh/scp)")
+    admin.return_to_runtime()
+    return _emit_result("出厂烧录", {"ok": True})
+
+
+def cmd_center_demo(args):
+    """N2 中枢编排端到端 (信号→感知→记忆→论证→决策→动作→事件)。"""
+    console.banner("N2 中枢编排 CenterBrain (B8 POSE_UPDATE 断链修复)")
+    from .center.center_brain import CenterBrain
+    from .cognition.cognitive_hub import CognitiveHub
+    from .runtime.bus import InProcessBus
+
+    bus = InProcessBus()
+    hub = CognitiveHub(bus=bus)
+    out = CenterBrain(bus=bus, hub=hub).run_demo()
+    console.emit(f"    双路径                          {out['paths']}")
+    console.emit(f"    POSE_UPDATE→hub 地点            {out['pose_seen_by_hub']}")
+    console.emit(f"    四要素事件                      {out['events']} 条")
+    console.emit(f"    V2L 推演步数                    {out['argument_steps']}")
+    return _emit_result("中枢编排", {"ok": True})
+
+
+def cmd_v2l_demo(args):
+    """N5 V2L 空间智能 — 辅助线/演算/结论 (可解释决策)。"""
+    console.banner("N5 V2L 空间智能 (想象空间思考: 辅助线→演算→结论)")
+    import numpy as np
+    from .center.spatial_reasoning import SpatialReasoner
+
+    r = SpatialReasoner()
+    rng = np.random.default_rng(3)
+    a = r.argue(rng.normal(size=12), np.array([1.0, 0.5, 0.0]))
+    console.emit(f"    辅助线                          {len(a.auxiliary_hypotheses)} 条")
+    console.emit(f"    演算步骤                        {len(a.derivation_steps)} 步")
+    console.emit(f"    结论                            {a.conclusion}")
+    console.emit(f"    决策向量                        {np.round(a.decision, 3).tolist()}")
+    return _emit_result("V2L 论证", {"ok": True})
+
+
+def cmd_chem_demo(args):
+    """N4 化学生化传感 × 触觉融合 (provenance=synthetic)。"""
+    console.banner("N4 化学生化 × 触觉融合 (e-nose/pH/湿度)")
+    from .perception.chem_bio import chem_demo
+
+    out = chem_demo()
+    for name, d in out.items():
+        console.emit(f"    {name:24s} surface={d['surface']:11s} "
+                     f"material={d['material']}")
+    return _emit_result("化学生化融合", {"ok": True})
+
+
 def cmd_wholebody(args):
     """G9 双足 3D 全身控制。"""
     console.banner("G9 双足 3D 全身控制 (3D ZMP + 6-DoF IK)")
@@ -997,7 +1091,26 @@ def _register_all() -> None:
     R("slam-demo", "M2 SLAM 三维坐标 + 时间戳 (EKF 平面+z 直通)", group="感知/认知",
       since="v1.0", examples=["embodied-audit slam-demo"])(cmd_slam_demo)
     R("cog-demo", "M4 认知中枢四要素 (时间/地点/人物/事情)", group="感知/认知",
-      since="v1.0", examples=["embodied-audit cog-demo"])(cmd_cog_demo)
+      since="v0.9", examples=["embodied-audit cog-demo"])(cmd_cog_demo)
+    R("loop-demo", "M6 VLA 双路径 × 认知中枢 端到端闭环", group="感知/认知",
+      since="v1.0", examples=["embodied-audit loop-demo"])(cmd_loop_demo)
+
+    # ---------------- OS / 中枢 (plan_v6 Sprint N) ----------------
+    R("os-status", "N3 OS SSH 双通道状态 (RUNTIME 协作 / MAINTENANCE 维护)",
+      group="OS/中枢", since="v1.2",
+      examples=["embodied-audit os-status"])(cmd_os_status)
+    R("os-provision", "N3 出厂初始程序烧录 (认知本体+启动清单, dry-run)",
+      group="OS/中枢", since="v1.2",
+      examples=["embodied-audit os-provision"])(cmd_os_provision)
+    R("center-demo", "N2 中枢编排端到端 (信号→感知→记忆→论证→决策→事件)",
+      group="OS/中枢", since="v1.2",
+      examples=["embodied-audit center-demo"])(cmd_center_demo)
+    R("v2l-demo", "N5 V2L 空间智能 (辅助线→演算→结论 可解释决策)",
+      group="OS/中枢", since="v1.2",
+      examples=["embodied-audit v2l-demo"])(cmd_v2l_demo)
+    R("chem-demo", "N4 化学生化 × 触觉传感融合 (e-nose/pH/湿度)",
+      group="OS/中枢", since="v1.2",
+      examples=["embodied-audit chem-demo"])(cmd_chem_demo)
 
     # ---------------- 训练 / 模型 ----------------
     R("train", "训练管线自检 (BC/PPO/SAC/扩散)", group="训练", since="v0.7",

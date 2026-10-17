@@ -103,7 +103,7 @@ class TestScriptThinShell(unittest.TestCase):
 
 
 class TestVerifyRefusesStrippedAsserts(unittest.TestCase):
-    """verify 的 35 个 check 全部以 assert 作判定, 而 `python -O` 会剥离 assert
+    """verify 的全部 check 都以 assert 作判定, 而 `python -O` 会剥离 assert
     —— 那种情况下 run_all 恒返回全绿, 比 FAIL 更糟: 它给出假的 VERIFY_OK。
     护栏必须在 -O 下拒绝出结论。"""
 
@@ -125,7 +125,12 @@ class TestVerifyRefusesStrippedAsserts(unittest.TestCase):
         self.assertEqual(n, "1", "-O 下不应执行任何 check (否则会假绿)")
 
     def test_run_all_executes_checks_without_dash_o(self):
-        """对照组: 正常解释器下必须真的跑完 35 项。"""
+        """对照组: 正常解释器下必须真的跑完全部 CHECKS 项。
+
+        计数动态取 len(verification.CHECKS) —— 与 test_version_consistency 的
+        README 口径守护同一真源, 新增 check 时不再需要手改这里。
+        """
+        from embodied_ai import verification as v
         code = ("from embodied_ai import verification;"
                 "print(len(verification.run_all(skip_pytest=True)))")
         p = subprocess.run([sys.executable, "-c", code],
@@ -134,7 +139,8 @@ class TestVerifyRefusesStrippedAsserts(unittest.TestCase):
                            cwd=str(REPO), timeout=600)
         self.assertEqual(p.returncode, 0, p.stderr[-800:])
         # run_all 会打印各 check 的摘要, 计数在最后一行
-        self.assertEqual(p.stdout.strip().splitlines()[-1], "35")
+        self.assertEqual(p.stdout.strip().splitlines()[-1],
+                         str(len(v.CHECKS)))
 
     def test_verify_cli_exit_nonzero_under_dash_o(self):
         p = subprocess.run([sys.executable, "-O", "-m", "embodied_ai.cli",

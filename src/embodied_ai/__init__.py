@@ -39,4 +39,4 @@ from . import console  # noqa: F401 — 导入即提供安全输出能力
 #: 版本号**单一真源** — pyproject.toml 经 [tool.setuptools.dynamic] 静态提取
 #: 此值, verification.VERSION 也从这里取。不要再在别处写死版本字面量
 #: (tests/test_version_consistency.py 守护四方一致)。
-__version__ = "1.1.0"
+__version__ = "1.3.0"
