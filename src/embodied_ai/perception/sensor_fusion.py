@@ -25,12 +25,14 @@
     - 不做跨进程传输（走 InProcessBus 即可，跨进程是 ROS2 对接的事）
 
 **反证要求（测试守护）**
-    分频串扰 <-20dB；无订阅者不崩；坏信道名报错；RingBuffer 时序单调。
+    分频串扰 <-20dB；**不分频时串扰必须 >-20dB**（负对照 —— 证明判据有区分
+    力，FFT 频带掩蔽天然正交，任何实现都能过 -20dB 一百度余量）；无订阅者
+    不崩；坏信道名报错；RingBuffer 时序单调。
 """
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Deque, Dict, List, Optional, Tuple
 
 import numpy as np
@@ -78,6 +80,17 @@ class Channelizer:
             if h1 > l2:
                 raise ValueError(f"信道 '{n1}' 与 '{n2}' 频带重叠, 无法分频")
 
+    def decimation(self, fs: float, name: str) -> int:
+        """该信道在组合采样率 fs 下的抽取率 (≥1)。
+
+        demux 与串扰度量**共用这一个真源** —— 曾经度量侧手写魔数
+        round(fs/2000), 与 demux 实际的 round(fs/8000)=1 不一致, 于是内积在
+        错位的时间基上进行, -147.9dB 那个数字是数值噪声而非测量结果。
+        """
+        if name not in self.channels:
+            raise KeyError(f"未知信道 '{name}'; 合法: {sorted(self.channels)}")
+        return max(1, int(round(fs / self.channels[name].sample_rate_hz)))
+
     def demux(self, signal: np.ndarray, fs: float) -> Dict[str, np.ndarray]:
         """组合信号 → {信道名: 子信号}（频带掩蔽 + 抽取）。
 
@@ -100,9 +113,7 @@ class Channelizer:
             masked = np.zeros_like(spectrum)
             masked[mask] = spectrum[mask]
             sub = np.fft.irfft(masked, n=n)
-            # 抽取到信道采样率（整数倍近似: decim = round(fs / ch_fs), ≥1）
-            decim = max(1, int(round(fs / ch.sample_rate_hz)))
-            out[name] = sub[::decim]
+            out[name] = sub[::self.decimation(fs, name)]
         return out
 
 
@@ -224,12 +235,43 @@ class SensorFusionHub:
 # demo — 合成信号分频验证
 # ══════════════════════════════════════════════════════════════════
 
+def crosstalk_db(extracted: np.ndarray, own: np.ndarray, other: np.ndarray,
+                 decim: int) -> float:
+    """串扰比 (dB): 提取信号中来自"其它信道"的能量占比 (越小越干净)。
+
+    own/other 按 decim 抽取以对齐 extracted 的时间基。**decim 必须由
+    `Channelizer.decimation()` 给出** —— 手写魔数会让内积在错位的时间基上
+    进行, 算出来的 dB 是数值噪声, 不是测量。
+    """
+    if decim < 1:
+        raise ValueError("decim 必须 >= 1")
+    o = np.asarray(own, dtype=np.float64)[::decim]
+    x = np.asarray(other, dtype=np.float64)[::decim]
+    e = np.asarray(extracted, dtype=np.float64)
+    n = min(e.size, o.size, x.size)
+    if n == 0:
+        raise ValueError("extracted/own/other 对齐后为空")
+    e, x = e[:n], x[:n]
+    # 提取信号在"它方信号"方向的投影能量 / 提取信号总能量
+    num = float(np.dot(e, x) ** 2 / max(float(np.dot(x, x)), 1e-12))
+    den = float(np.dot(e, e)) + 1e-12
+    return float(10 * np.log10(max(num, 1e-12) / den))
+
+
+#: demo 用信道定义 (单一真源 — decimation 与串扰度量都从这里取)
+DEMO_CHANNELS: List[ChannelSpec] = [
+    ChannelSpec("video", center_hz=300, bandwidth_hz=400, sample_rate_hz=1000),
+    ChannelSpec("microwave", center_hz=2750, bandwidth_hz=1200, sample_rate_hz=8000),
+]
+DEMO_FS = 8000.0        # 组合采样率 (synthetic)
+
+
 def fusion_demo() -> dict:
     """合成"视频帧脉冲(低频带) + 微波双音(高频带)"组合信号 → 分频。
 
-    验证: 两信道解出的子信号与各自原信号能量比（串扰）<-20dB。
+    验证: 两信道解出的子信号中来自它方信道的能量占比（串扰）<-20dB。
     """
-    fs = 8000.0            # 组合采样率 (synthetic)
+    fs = DEMO_FS
     t = np.arange(0, 1.0, 1.0 / fs)
     # 视频通道: 300Hz 基带信号 (帧率调制)
     video_true = 0.8 * np.sin(2 * np.pi * 300 * t)
@@ -237,32 +279,14 @@ def fusion_demo() -> dict:
     micro_true = 0.6 * np.sin(2 * np.pi * 2500 * t) + 0.5 * np.sin(2 * np.pi * 3000 * t)
     composite = video_true + micro_true
 
-    hub = SensorFusionHub([
-        ChannelSpec("video", center_hz=300, bandwidth_hz=400, sample_rate_hz=1000),
-        ChannelSpec("microwave", center_hz=2750, bandwidth_hz=1200, sample_rate_hz=8000),
-    ])
+    hub = SensorFusionHub(list(DEMO_CHANNELS))
     samples = hub.ingest(0.0, composite, fs)
     sub = hub.channelizer.demux(composite, fs)
 
-    def _crosstalk(extracted: np.ndarray, own: np.ndarray, other: np.ndarray,
-                   decim: int) -> float:
-        """串扰比 (dB): 提取信号中来自"其它信道"的能量占比。
-
-        own/other 按相同抽取率对齐时间基后比较。
-        """
-        o = own[::decim]
-        x = other[::decim]
-        n = min(extracted.size, o.size, x.size)
-        e, o, x = extracted[:n], o[:n], x[:n]
-        # 提取信号在"它方信号"方向的投影能量 / 提取信号总能量
-        num = float(np.dot(e, x) ** 2 / max(np.dot(x, x), 1e-12))
-        den = float(np.dot(e, e)) + 1e-12
-        return 10 * np.log10(max(num, 1e-12) / den)
-
-    ct_video = _crosstalk(sub["video"], video_true, micro_true,
-                          int(round(fs / 1000)))
-    ct_micro = _crosstalk(sub["microwave"], micro_true, video_true,
-                          int(round(fs / 2000)))
+    ct_video = crosstalk_db(sub["video"], video_true, micro_true,
+                            hub.channelizer.decimation(fs, "video"))
+    ct_micro = crosstalk_db(sub["microwave"], micro_true, video_true,
+                            hub.channelizer.decimation(fs, "microwave"))
     result = {
         "channels": sorted(sub),
         "crosstalk_video_db": ct_video,

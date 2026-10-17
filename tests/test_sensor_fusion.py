@@ -6,11 +6,14 @@ import numpy as np
 import pytest
 
 from embodied_ai.perception.sensor_fusion import (
+    DEMO_CHANNELS,
+    DEMO_FS,
     ChannelSpec,
     Channelizer,
     ProcessedSample,
     RingBuffer,
     SensorFusionHub,
+    crosstalk_db,
     fusion_demo,
     microwave_features,
     video_frame_features,
@@ -58,6 +61,42 @@ class TestChannelizer:
         assert r["crosstalk_video_db"] < -20.0
         assert r["crosstalk_microwave_db"] < -20.0
 
+    def test_crosstalk_metric_has_discriminating_power(self):
+        """负对照: 不做分频时微波信道串扰必须 >-20dB。
+
+        FFT 频带掩蔽对正交单音天然干净 (实测 -121/-154dB), <-20dB 的判据有
+        一百多 dB 余量 —— 必须证明这个门槛真的能失败, 否则它守护不了任何东西。
+        """
+        t = np.arange(0, 1.0, 1.0 / FS)
+        comp, _, micro = _composite(t)
+        video = 0.8 * np.sin(2 * np.pi * 300 * t)
+        raw = crosstalk_db(comp, micro, video, 1)     # 不分频, 直接用组合信号
+        assert raw > -20.0, f"不分频串扰 {raw:.1f}dB — 判据已失去区分力"
+        assert fusion_demo()["crosstalk_microwave_db"] < raw - 100
+
+    def test_decimation_is_single_source_of_truth(self):
+        """串扰度量与 demux 必须共用抽取率。
+
+        曾经度量侧手写 round(fs/2000)=4, 而 demux 实际是 round(fs/8000)=1,
+        内积在错位的时间基上进行 —— -147.9dB 那个数字是数值噪声而非测量。
+        """
+        ch = Channelizer([s for s in DEMO_CHANNELS])
+        assert ch.decimation(DEMO_FS, "video") == 8
+        assert ch.decimation(DEMO_FS, "microwave") == 1
+        t = np.arange(0, 0.5, 1.0 / DEMO_FS)          # 4000 点
+        sub = ch.demux(_composite(t)[0], DEMO_FS)
+        assert sub["video"].size == 500               # 4000 / 8
+        assert sub["microwave"].size == 4000          # 4000 / 1
+
+    def test_decimation_unknown_channel_raises(self):
+        ch = Channelizer([ChannelSpec("a", 100, 50, 200)])
+        with pytest.raises(KeyError):
+            ch.decimation(FS, "ghost")
+
+    def test_crosstalk_bad_decim_raises(self):
+        with pytest.raises(ValueError):
+            crosstalk_db(np.ones(10), np.ones(10), np.ones(10), 0)
+
     def test_empty_signal_raises(self):
         ch = Channelizer([ChannelSpec("a", 100, 50, 200)])
         with pytest.raises(ValueError):
@@ -74,7 +113,7 @@ class TestChannelizer:
                 ChannelSpec("b", 700, 800, 1000),   # 与 a 频带重叠
             ])
 
-    def test_unknown_channel_raises(self):
+    def test_demux_returns_every_declared_channel(self):
         ch = Channelizer([ChannelSpec("a", 100, 50, 200)])
         assert "a" in ch.demux(np.zeros(100), FS)
 
