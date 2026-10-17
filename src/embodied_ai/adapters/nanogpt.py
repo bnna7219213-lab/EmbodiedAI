@@ -18,7 +18,12 @@ from dataclasses import fields as dc_fields
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-NANOGPT_ROOT = Path(r"C:\Users\bnna7\RaccoonWork\nanoGPT")
+from ..paths import ext_root   # noqa: E402 — 外部路径解析, 永不抛错
+
+#: nanoGPT 是**外部**仓库 (不入库; 探测缺失不算失败, 交付物是训练计划)。
+#: NANOGPT_ROOT env 覆盖, 否则按 `~/RaccoonWork/nanoGPT` 推导 —— 此前写死
+#: C:\Users\<用户名>\..., 换机器必然探测失败, 且把用户名提交进了公开仓库。
+NANOGPT_ROOT = ext_root("NANOGPT_ROOT", "RaccoonWork", "nanoGPT")
 
 # VLAConfig 字段 → nanoGPT ModelConfig 字段的语义映射 (训练/工程化对齐审计用)
 FIELD_MAPPING = {

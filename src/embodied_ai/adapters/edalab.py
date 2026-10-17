@@ -27,6 +27,7 @@ dry 模式 (默认): 元数据校验 + 引擎文件存在性检查 (K2 早期行
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import time
@@ -37,6 +38,8 @@ try:
     import yaml
 except ImportError:
     yaml = None
+
+from ..paths import ext_root, home   # noqa: E402 — 外部路径解析, 永不抛错
 
 
 # ------------------------------------------------------------------ #
@@ -66,8 +69,20 @@ FLOW_CHAIN: List[Dict[str, Any]] = [
 # ------------------------------------------------------------------ #
 _REPO_ROOT = Path(__file__).resolve().parents[3]          # src/embodied_ai/adapters/ → 仓库根
 VENDOR_DIR = _REPO_ROOT / "vendor" / "edalab"            # 入库的 jar (单仓自足的关键)
-EDALAB_ROOT = Path(r"C:\Users\bnna7\workspace\EdaLab")   # 外部参照 (仅回退用)
+#: 外部 EdaLab 源码目录 —— **仅开发机回退用**, 单仓运行不依赖 (vendor jar 才是
+#: 唯一正式调用方式)。默认按 `~/workspace/EdaLab` 猜测, 可用 EDALAB_ROOT 覆盖。
+#: 此前这里写死了 `C:\Users\<用户名>\workspace\EdaLab` —— 把个人机器路径和用户名
+#: 提交进公开仓库, 且与 README "clone 后仅需 JRE" 的承诺冲突。
+EDALAB_ROOT = ext_root("EDALAB_ROOT", "workspace", "EdaLab")
 EDALAB_MAIN_CLASS = "edalab.core.cli.EdaCli"
+
+
+def gradle_cache_dir() -> Path:
+    """Gradle 依赖缓存根 —— GRADLE_USER_HOME 优先, 否则 ~/.gradle。
+
+    跨平台推导, 不硬编码用户目录 (vendor jar 缺失时才用作兜底)。
+    """
+    return Path(os.environ.get("GRADLE_USER_HOME") or home() / ".gradle")
 
 
 def resolve_jar_paths() -> Dict[str, Optional[Path]]:
@@ -78,10 +93,10 @@ def resolve_jar_paths() -> Dict[str, Optional[Path]]:
     3. gradle 缓存       (Kotlin stdlib, vendor 缺失时兜底)
     返回 {"core": Path|None, "stdlib": Path|None, "source": str}
 
-    环境变量 EDALAB_HOME 可覆盖外部回退目录 (CI 显式验证"无外部依赖"时可指向不存在路径)。
+    环境变量 EDALAB_ROOT 可覆盖外部回退目录 (CI 显式验证"无外部依赖"时可指向不存在路径)。
     """
-    import os as _os
-    external_root = Path(_os.environ["EDALAB_HOME"]) if _os.environ.get("EDALAB_HOME") else EDALAB_ROOT
+    external_root = (Path(os.environ["EDALAB_ROOT"])
+                     if os.environ.get("EDALAB_ROOT") else EDALAB_ROOT)
     # core jar
     core = None
     source = "missing"
@@ -98,8 +113,9 @@ def resolve_jar_paths() -> Dict[str, Optional[Path]]:
         stdlib = vendored[-1]
     else:
         import glob as _glob
+        gh = str(gradle_cache_dir()).replace("\\", "/")
         hits = sorted(_glob.glob(
-            "C:/Users/bnna7/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin"
+            f"{gh}/caches/modules-2/files-2.1/org.jetbrains.kotlin"
             "/kotlin-stdlib/*/*/kotlin-stdlib-*.jar"))
         hits = [h for h in hits if "sources" not in h]
         if hits:
@@ -122,9 +138,7 @@ def build_classpath() -> Optional[str]:
     # 且"仅 vendor 两件"已在干净 classpath 下实测通过全部 12 个 stage)
     # 路径跨平台推导: GRADLE_USER_HOME 优先, 否则 ~/.gradle — 不硬编码用户目录
     import glob as _glob
-    import os as _os
-    gradle_home = (_os.environ.get("GRADLE_USER_HOME")
-                   or str(Path.home() / ".gradle")).replace("\\", "/")
+    gradle_home = str(gradle_cache_dir()).replace("\\", "/")
     for pat in ("kotlin-stdlib-jdk8", "kotlin-stdlib-jdk7"):
         hits = sorted(_glob.glob(
             f"{gradle_home}/caches/modules-2/files-2.1/"
@@ -635,6 +649,10 @@ def _resolve_java() -> str:
         "java 不可用: PATH 与 JAVA_HOME 均未找到 java; "
         "请安装 JRE 或设置 JAVA_HOME / EMBODIED_JAVA "
         "(vendor 模式单仓自足仅需 JRE, 无需 JDK/gradle)")
+
+
+#: 公开别名 — 供 afe_ind 等姊妹模块复用同一套 java 解析, 不再各自写死路径
+resolve_java = _resolve_java
 
 
 class EdalabAdapter:

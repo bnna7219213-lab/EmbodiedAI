@@ -17,6 +17,7 @@ import sys
 from pathlib import Path
 
 from . import console
+from .paths import ext_root
 from .adapters.edalab import FLOW_CHAIN, EdalabAdapter, CLIMBING_SPEC
 # CLI 全局注册表 (命令的唯一真源 — 新增命令必须经 register_command 注册)
 from .cli_registry import (
@@ -32,6 +33,8 @@ from typing import Any, Dict
 REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # 五项目角色 (skeleton-and-layering-plan §3.5 终版裁定)
+# 外部仓库的 root 一律走 paths.ext_root(): env 覆盖优先, 主目录推导兜底, 且
+# 主目录不可知时**不抛错** (此前写死 C:\Users\<用户名>\..., 见 paths.py 说明)。
 PROJECTS = {
     "EmbodiedAI": {
         "root": REPO_ROOT,
@@ -42,7 +45,7 @@ PROJECTS = {
                    "contracts/hw_requirements.yaml"],
     },
     "EdaLab": {
-        "root": Path(r"C:\Users\bnna7\workspace\EdaLab"),
+        "root": ext_root("EDALAB_ROOT", "workspace", "EdaLab"),
         "role": "怎么造硬件 — 36 引擎 + 12 步主链 (Kotlin; vendor jar 已入库)",
         # 本仓探针: 单仓自足的关键证据 (相对 EmbodiedAI 仓库根)
         "own_probes": ["vendor/edalab/edalabcore.jar",
@@ -53,17 +56,17 @@ PROJECTS = {
         "note": "v0.8: 能力经 vendor/edalab jar 消费 (单仓自足, 仅需 JRE); 外部源码为开发机参照",
     },
     "ECAD-MCAD": {
-        "root": Path(r"C:\Users\bnna7\workspace\ECAD-MCAD"),
+        "root": ext_root("ECAD_MCAD_ROOT", "workspace", "ECAD-MCAD"),
         "role": "生命周期方法论 — NG1-22 + P0-P9 (文档)",
         "probes": ["最终计划.md", "全链条技术缺口补充.md", "硬件全生命周期衔接方案.md"],
     },
     "SynapticForge": {
-        "root": Path(r"C:\Users\bnna7\workspace\SynapticForge"),
+        "root": ext_root("SYNAPTIC_FORGE_ROOT", "workspace", "SynapticForge"),
         "role": "商业化融合层 — L4 ForgeCore 编排 + 飞轮 (文档)",
         "probes": ["README.md", "docs/02-tech-architecture/00-architecture-overview.md"],
     },
     "nanoGPT": {
-        "root": Path(r"C:\Users\bnna7\RaccoonWork\nanoGPT"),
+        "root": ext_root("NANOGPT_ROOT", "RaccoonWork", "nanoGPT"),
         "role": "模型训练底座 — tokenizer/Trainer/消融体系",
         "probes": ["llm.py", "train.py", "tokenizer.py"],
     },
@@ -990,11 +993,11 @@ def _register_all() -> None:
 
     # ---------------- 感知 / 认知 (plan_v5 Sprint M) ----------------
     R("fusion-demo", "M1 多传感器融合 + 分频信道处理 (视频/微波)", group="感知/认知",
-      since="v0.9", examples=["embodied-audit fusion-demo"])(cmd_fusion_demo)
+      since="v1.0", examples=["embodied-audit fusion-demo"])(cmd_fusion_demo)
     R("slam-demo", "M2 SLAM 三维坐标 + 时间戳 (EKF 平面+z 直通)", group="感知/认知",
-      since="v0.9", examples=["embodied-audit slam-demo"])(cmd_slam_demo)
+      since="v1.0", examples=["embodied-audit slam-demo"])(cmd_slam_demo)
     R("cog-demo", "M4 认知中枢四要素 (时间/地点/人物/事情)", group="感知/认知",
-      since="v0.9", examples=["embodied-audit cog-demo"])(cmd_cog_demo)
+      since="v1.0", examples=["embodied-audit cog-demo"])(cmd_cog_demo)
 
     # ---------------- 训练 / 模型 ----------------
     R("train", "训练管线自检 (BC/PPO/SAC/扩散)", group="训练", since="v0.7",

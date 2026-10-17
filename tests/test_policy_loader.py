@@ -22,8 +22,36 @@ from embodied_ai.control.policy_loader import (CheckpointError, PolicyLoader,
                                                 ReplayPolicy,
                                                 find_latest_checkpoint)
 
-PY314 = r"C:\Users\bnna7\AppData\Local\Programs\Python\Python314\python.exe"
-HAS_TORCH_PY = Path(PY314).exists()
+def _find_torch_python() -> "str | None":
+    """找一个能 `import torch` 的解释器 (B 组端到端用例需要)。
+
+    顺序: EMBODIED_TORCH_PYTHON env → 当前解释器 → `~/AppData/Local/Programs/
+    Python/*/python.exe`。此前这里写死单个解释器绝对路径 (连用户名一起进仓库),
+    换一台机器就恒 skip —— 等于 torch 装载路径在任何 CI 上都没有覆盖。
+    """
+    def _has_torch(exe: str) -> bool:
+        try:
+            return subprocess.run([exe, "-c", "import torch"],
+                                  capture_output=True, timeout=120).returncode == 0
+        except Exception:  # noqa: BLE001 — 探测失败即视为不可用
+            return False
+
+    import glob as _glob
+    cands = []
+    env = os.environ.get("EMBODIED_TORCH_PYTHON")
+    if env:
+        cands.append(env)
+    cands.append(sys.executable)
+    cands += sorted(_glob.glob(str(
+        Path.home() / "AppData" / "Local" / "Programs" / "Python" / "*" / "python.exe")))
+    for c in cands:
+        if Path(c).exists() and _has_torch(c):
+            return c
+    return None
+
+
+TORCH_PY = _find_torch_python()
+HAS_TORCH_PY = TORCH_PY is not None
 
 
 def _resolve_test_ckpt() -> Path | None:
@@ -109,13 +137,13 @@ class TestAttachRouting(unittest.TestCase):
         self.assertTrue(np.any(np.abs(a) > 1e-6), "接线后控制环应产出非零动作")
 
 
-@unittest.skipUnless(HAS_TORCH_PY, "需要 3.14 torch 环境")
+@unittest.skipUnless(HAS_TORCH_PY, "需要一个能 import torch 的解释器 (见 _find_torch_python)")
 class TestEndToEndWithTorch(unittest.TestCase):
-    """B. 端到端 (3.14 子进程): 真装载→真推理→控制环。"""
+    """B. 端到端 (torch 子进程): 真装载→真推理→控制环。"""
 
     def _run(self, code: str):
         env = {**os.environ, "PYTHONPATH": str(SRC)}
-        return subprocess.run([PY314, "-c", code], capture_output=True,
+        return subprocess.run([TORCH_PY, "-c", code], capture_output=True,
                               text=True, encoding="utf-8", errors="replace",
                               env=env, cwd=str(REPO), timeout=300)
 

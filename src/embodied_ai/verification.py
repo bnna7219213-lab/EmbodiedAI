@@ -21,7 +21,7 @@ from typing import Any, Callable, Dict, List, Tuple
 
 import numpy as np
 
-VERSION = "0.7.0"
+from . import __version__ as VERSION   # 单一真源, 不在此处写死字面量
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = REPO_ROOT / "src"
@@ -881,10 +881,12 @@ def _write_snapshot(root, *, arch="aarch64", board="jetson", tegra=True, rt=True
 def check_sensor_fusion() -> int:
     """M1 多传感器融合 + 分频信道处理 (plan_v5 Sprint M)。
 
-    守护: 组合信号分频解复用; 信道串扰 <-20dB; 处理样本暂存 + 发 Bus。
+    守护: 组合信号分频解复用; 信道串扰 <-20dB; **不分频时串扰必须 >-20dB**
+    (负对照 — 频带掩蔽天然正交, 没有它这个门槛永远绿); 处理样本暂存 + 发 Bus。
     """
     from .perception.sensor_fusion import (
-        ChannelSpec, SensorFusionHub, fusion_demo,
+        DEMO_CHANNELS, DEMO_FS, ChannelSpec, Channelizer, SensorFusionHub,
+        crosstalk_db, fusion_demo,
     )
 
     r = fusion_demo()
@@ -892,42 +894,79 @@ def check_sensor_fusion() -> int:
         f"video 信道串扰 {r['crosstalk_video_db']:.1f}dB 未达标"
     assert r["crosstalk_microwave_db"] < -20.0, \
         f"microwave 信道串扰 {r['crosstalk_microwave_db']:.1f}dB 未达标"
+
+    # 负对照: 不分频 (直接用组合信号) 时微波信道串扰必须超阈
+    t = np.arange(0, 1.0, 1.0 / DEMO_FS)
+    video = 0.8 * np.sin(2 * np.pi * 300 * t)
+    micro = (0.6 * np.sin(2 * np.pi * 2500 * t)
+             + 0.5 * np.sin(2 * np.pi * 3000 * t))
+    raw = crosstalk_db(video + micro, micro, video, 1)
+    assert raw > -20.0, f"不分频串扰 {raw:.1f}dB — <-20dB 判据已失去区分力"
+
+    # 抽取率单一真源: 度量与 demux 必须一致 (曾手写 round(fs/2000) 错配)
+    ch = Channelizer(list(DEMO_CHANNELS))
+    assert (ch.decimation(DEMO_FS, "video"), ch.decimation(DEMO_FS, "microwave")) \
+        == (8, 1), "抽取率与信道定义不符"
+
     hub = SensorFusionHub([ChannelSpec("video", 300, 400, 1000)])
-    t = np.arange(0, 0.1, 1.0 / 8000)
-    hub.ingest(0.0, np.sin(2 * np.pi * 300 * t), 8000.0)
+    t2 = np.arange(0, 0.1, 1.0 / 8000)
+    hub.ingest(0.0, np.sin(2 * np.pi * 300 * t2), 8000.0)
     assert len(hub.buffer) == 1, "处理样本应暂存进 RingBuffer"
     print(f"多传感器分频: 串扰 video={r['crosstalk_video_db']:.1f}dB / "
-          f"microwave={r['crosstalk_microwave_db']:.1f}dB (<-20dB ✓)")
+          f"microwave={r['crosstalk_microwave_db']:.1f}dB; 不分频负对照 "
+          f"{raw:.1f}dB (> -20dB, 判据有区分力 ✓)")
     return 0
 
 
 def check_slam() -> int:
     """M2 SLAM 三维坐标 + 时间戳 (plan_v5 Sprint M)。
 
-    守护: 带噪仿真位姿误差收敛 <0.3m; 路标增广; 时间戳单调。
+    守护: 带噪仿真位姿误差收敛 <0.3m; 路标增广; 时间戳单调; **判据有区分力**
+    (3x 噪声失配必须超阈, 否则 "<0.3m" 是恒真门槛)。
     """
     from .perception.slam import EKFSLAM2D, slam_demo
 
     r = slam_demo()
     assert r["final_position_error_m"] < 0.3, \
         f"SLAM 位姿误差 {r['final_position_error_m']:.3f}m 未收敛"
+    # R_OBS 必须是方差 (曾把 std 直接填进协方差, 量纲错 2.6x/4.5x)
+    assert EKFSLAM2D.R_OBS[0, 0] == EKFSLAM2D.SIGMA_RANGE_M ** 2, \
+        "R_OBS 对角线不是 σ², 量纲错配"
+    # 负对照: 3x 失配下误差必须超阈, 证明判据不是恒真
+    mismatched = slam_demo(obs_noise_scale=3.0)["final_position_error_m"]
+    assert mismatched > 0.3, \
+        f"3x 噪声失配仍 {mismatched:.3f}m <0.3m — 收敛判据失去区分力"
     slam = EKFSLAM2D()
-    slam.update_landmark("a", 2.0, 0.3, timestamp_s=0.1)
+    slam.update_landmark("a", 2.0, 0.3, timestamp_s=0.1, mz=1.75)
+    assert slam.landmark_position("a")[2] == 1.75, "路标 z 被静默丢弃"
     try:
         slam.update_landmark("a", 2.0, 0.3, timestamp_s=0.05)
     except ValueError:
         pass
     else:
         raise AssertionError("时间戳倒退未被拒绝")
-    print(f"SLAM: 50 步位姿误差 {r['final_position_error_m']:.3f}m (<0.3m ✓), "
-          f"路标 {len(r['landmarks'])} 个")
+
+    # M5 宣称的 POSE_UPDATE 必须真的有流量 (曾零发布者零订阅者)
+    from .cognition.cognitive_hub import CognitiveHub
+    from .runtime.bus import Collector, InProcessBus
+    bus = InProcessBus("verify_slam_bus")
+    got = Collector()
+    bus.subscribe("pose_update", got)
+    hub = CognitiveHub(bus=bus)
+    slam_demo(bus=bus)
+    assert len(got.messages) == 50, f"POSE_UPDATE 发布者异常: 仅 {len(got.messages)} 条"
+    assert hub.latest_pose("robot") is not None, "SLAM→认知中枢 地点要素链路断裂"
+    print(f"SLAM: 匹配噪声 {r['final_position_error_m']:.3f}m / 3x 失配 "
+          f"{mismatched:.3f}m (<0.3m 判据有区分力 ✓), 路标 {len(r['landmarks'])} 个, "
+          f"POSE_UPDATE 50 条已抵达认知中枢")
     return 0
 
 
 def check_cognitive_hub() -> int:
     """M4 认知中枢四要素 (plan_v5 Sprint M)。
 
-    守护: 记录/分析/计算/规划/记忆 五能力; 四要素完整性; 时间衰减召回。
+    守护: 记录/分析/计算/规划/记忆 五能力; 四要素完整性; 三处静默失败必须
+    改为显式报错 (负时间戳 / 未知规划目标 / 地点过滤只给一半参数)。
     """
     from .cognition.cognitive_hub import CognitiveHub, EventRecord, cognitive_demo
 
@@ -942,30 +981,54 @@ def check_cognitive_hub() -> int:
         pass
     else:
         raise AssertionError("负时间戳事件未被拒绝")
+    try:
+        hub.plan("no_such_goal")
+    except KeyError:
+        pass
+    else:
+        raise AssertionError("未知规划目标未被拒绝 (曾与'前置已满足'同样返回 [])")
+    try:
+        hub.memory.query(location_center=np.zeros(3))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("地点过滤缺 radius 未被拒绝 (曾静默不过滤)")
+    # DECAY_RATE 必须可观测, 否则"时间衰减"与"时间倒序"无法区分
+    hub.record_event(EventRecord(0.0, np.zeros(3), "a", "old"))
+    hub.record_event(EventRecord(10.0, np.zeros(3), "a", "new"))
+    scored = dict((e.thing, s) for s, e in hub.remember_scored(now_s=10.0))
+    assert scored["old"] == float(np.exp(-CognitiveHub.DECAY_RATE * 10.0)), \
+        "衰减得分不等于 exp(-DECAY_RATE·Δt)"
     print(f"认知中枢: {r['analysis']['total']} 事件, 事件率 "
-          f"{r['stats']['event_rate_hz']:.2f}Hz, 规划缺口 {r['plan_climb_hold']}")
+          f"{r['stats']['event_rate_hz']:.2f}Hz, 规划缺口 {r['plan_climb_hold']}, "
+          f"衰减得分(old)={scored['old']:.3f}")
     return 0
 
 
 def check_vla_v2a() -> int:
     """M3 V-to-action 纯视觉决策路径 (plan_v5 Sprint M)。
 
-    守护: v2a ≡ vla(lang=None) 等价; 语言通道生效; modality="v2a" 时
-    min_block_size 不含语言 token。
+    守护: v2a ≡ vla(lang=None) 等价; v2a 模态拒绝语言; 语言通道在 vla 模态生效;
+    modality="v2a" 时 min_block_size 不含语言 token; numpy 头与 torch VLAModel
+    形状契约不漂移。
     """
     from .models.vla_config import VLAConfig
-    from .models.vla_v2a import VLAPolicy, v2a_demo
+    from .models.vla_v2a import VLAPolicy, torch_shape_contract, v2a_demo
 
     r = v2a_demo()
     assert r["v2a_equals_vla_none"], "v2a 与 vla(None) 不等价"
+    assert r["v2a_rejects_language"], "modality='v2a' 未拒绝语言输入"
+    assert r["lang_changes_output"], "语言通道未改变输出"
     assert r["min_block_size_v2a"] == r["min_block_size_vla"] - VLAConfig.LANG_TOKENS
     cfg = VLAConfig(modality="v2a")
     p = VLAPolicy(cfg)
     v = np.zeros((cfg.num_views, cfg.vision_embd))
     assert p.infer_v2a(v, np.zeros(cfg.state_dim)).shape == \
         (cfg.action_horizon, cfg.action_dim)
-    print(f"V2A: 等价路径 ✓, min_block_size v2a={r['min_block_size_v2a']} "
-          f"< vla={r['min_block_size_vla']}")
+    contract = torch_shape_contract()
+    print(f"V2A: 等价路径 ✓, v2a 拒语言 ✓, min_block_size v2a={r['min_block_size_v2a']} "
+          f"< vla={r['min_block_size_vla']}, torch 形状契约 "
+          f"{'✓ ' + str(contract[0]) if contract else '跳过 (无 torch)'}")
     return 0
 
 
@@ -1050,6 +1113,13 @@ CHECKS: List[Tuple[str, Callable[[], int]]] = [
 
 def run_all(skip_pytest: bool = False) -> List[Tuple[str, bool, str]]:
     """执行全部检查项, 返回 [(name, passed, detail)]。"""
+    if not __debug__:
+        # python -O 会剥离全部 assert, 而 35 个 check 的判定**就是** assert。
+        # 那种情况下 run_all 恒返回全绿 —— "退出码即结论" 退化成 "退出码即表演",
+        # 且比 FAIL 更糟: 它给出一个假的 VERIFY_OK。宁可拒绝出结论。
+        return [("asserts_stripped", False,
+                 "python -O/-OO 已剥离 assert, 所有 check 会恒真通过, verify "
+                 "结果无效 — 请改用不带 -O 的解释器重跑")]
     results: List[Tuple[str, bool, str]] = []
     for name, fn in CHECKS:
         try:

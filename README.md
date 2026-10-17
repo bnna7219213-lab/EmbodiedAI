@@ -4,10 +4,20 @@
 >
 > **定位**: 不拼装现有方案，从零构建"AI 神经网络模型 → PCB 硬件 → 电机驱动 → 具身智能体"全链条的端到端研发计划。
 >
-> **版本**: v0.7 | 更新日期: 2026-10-06
+> **版本**: v1.1 | 更新日期: 2026-10-17
 >
 > **一键验收**: `scripts\verify.bat` (cmd) / `.\scripts\verify.ps1` (PowerShell) → `RESULT=VERIFY_OK`
-> 或 `python -m embodied_ai.cli verify` (**35 项**聚合自检, 退出码即结论; 含 pytest = 36 项 + 580 passed)
+> 或 `python -m embodied_ai.cli verify` (**35 项**聚合自检, 退出码即结论; 含 pytest = 36 项 + 632 passed, v1.1 实测)
+>
+> **v1.1 主题**: 验收**诚实化** — 把"绿色但无效"的判据改成能失败的判据
+> (V2A 等价性不再自我认证 / SLAM 补噪声失配负对照 / 分频串扰度量修时间基),
+> 把静默失败改成显式报错 (认知中枢三处 / Bus 全零观测), provenance 由数据推导
+> 而非由导出器断言, 并清除仓库里的个人机器路径。详见
+> [CHANGELOG v1.1](CHANGELOG.md)。
+>
+> **v1.0 主题**: Sprint M 机器人端补全 — 多传感器分频信道融合 (M1) / EKF-SLAM
+> 位姿+时间戳 (M2) / VLA 双路径 V+L 与 V-to-action (M3) / 四要素认知中枢 (M4)。
+> 详见 [plan_v5.md](plan_v5.md) 与 [CHANGELOG v1.0](CHANGELOG.md)。
 >
 > **v0.7 主题**: 针对"全链条完成度 30-35%"的评估结论批量补齐缺口 —
 > 柔性体 (G6) / 双足 3D (G9) / 灵巧手 (G11) / 终身学习 (G12) / GUI (L7) /

@@ -4,20 +4,30 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "embodied-ai"
-version = "0.7.0"
+# 版本单一真源 = src/embodied_ai/__init__.py 的 __version__ (setuptools 静态 AST
+# 提取, 不 import 包)。此前 pyproject/__init__/verification.VERSION/README 四处
+# 各写一份, 宣称 v1.0 时元数据仍是 0.7.0。
+dynamic = ["version"]
 description = "EmbodiedAI: AI 神经网络模型 → PCB 硬件 → 电机驱动 → 具身智能体 全链条研发 (三栈分离: 控制L/物理P/数据D/安全S横切)"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-dependencies = ["numpy", "pyyaml"]
+dependencies = ["numpy>=1.24", "pyyaml"]
+
+[tool.setuptools.dynamic]
+version = { attr = "embodied_ai.__version__" }
 
 [project.optional-dependencies]
 # 仿真后端 (可选): 缺失时 make_env 自动回退到零依赖 reference 后端
 sim = ["mujoco", "pybullet"]
 # 模型训练 (可选): 缺失时 VLA 走静态验证路径 (HAS_TORCH=False)
 torch = ["torch"]
-# 开发/CI
-dev = ["pytest>=7.0", "pytest-subtests"]
+# 真机传输层 (可选): simulation/real_robot_env.py 的 SocketCANTransport /
+# SerialTransport 需要。此前这两个 import 是"隐形依赖" — 未在任何 extras 中
+# 声明, CI 也从不安装, 于是真机路径的代码从未被执行过。
+real = ["python-can", "pyserial"]
+# 开发/CI (pytest 上限: 本地已在 pytest 9 上跑, 与 CI 的 7/8 行为有差异)
+dev = ["pytest>=7.0,<10", "pytest-subtests"]
 
 [project.scripts]
 embodied-audit = "embodied_ai.cli:main"

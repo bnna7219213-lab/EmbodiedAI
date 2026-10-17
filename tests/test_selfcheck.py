@@ -6,6 +6,7 @@
   3. 脚本薄壳与包内实现同源（避免"脚本一份、CLI 一份"两处维护）
 """
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -99,6 +100,50 @@ class TestScriptThinShell(unittest.TestCase):
                            cwd=str(REPO), timeout=300)
         self.assertEqual(p.returncode, 0, f"脚本失败:\n{p.stdout[-400:]}\n{p.stderr[-400:]}")
         self.assertTrue(json.loads(p.stdout)["ok"])
+
+
+class TestVerifyRefusesStrippedAsserts(unittest.TestCase):
+    """verify 的 35 个 check 全部以 assert 作判定, 而 `python -O` 会剥离 assert
+    —— 那种情况下 run_all 恒返回全绿, 比 FAIL 更糟: 它给出假的 VERIFY_OK。
+    护栏必须在 -O 下拒绝出结论。"""
+
+    def _env(self):
+        return {**os.environ, "PYTHONPATH": str(SRC)}
+
+    def test_run_all_refuses_under_dash_o(self):
+        code = ("from embodied_ai import verification;"
+                "r = verification.run_all(skip_pytest=True);"
+                "print(len(r), r[0][0], r[0][1])")
+        p = subprocess.run([sys.executable, "-O", "-c", code],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", env=self._env(),
+                           cwd=str(REPO), timeout=180)
+        self.assertEqual(p.returncode, 0, p.stderr[-800:])
+        n, name, passed = p.stdout.split()
+        self.assertEqual(name, "asserts_stripped")
+        self.assertEqual(passed, "False")
+        self.assertEqual(n, "1", "-O 下不应执行任何 check (否则会假绿)")
+
+    def test_run_all_executes_checks_without_dash_o(self):
+        """对照组: 正常解释器下必须真的跑完 35 项。"""
+        code = ("from embodied_ai import verification;"
+                "print(len(verification.run_all(skip_pytest=True)))")
+        p = subprocess.run([sys.executable, "-c", code],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", env=self._env(),
+                           cwd=str(REPO), timeout=600)
+        self.assertEqual(p.returncode, 0, p.stderr[-800:])
+        # run_all 会打印各 check 的摘要, 计数在最后一行
+        self.assertEqual(p.stdout.strip().splitlines()[-1], "35")
+
+    def test_verify_cli_exit_nonzero_under_dash_o(self):
+        p = subprocess.run([sys.executable, "-O", "-m", "embodied_ai.cli",
+                            "verify", "--no-pytest"],
+                           capture_output=True, text=True, encoding="utf-8",
+                           errors="replace", env=self._env(),
+                           cwd=str(REPO), timeout=300)
+        self.assertEqual(p.returncode, 1, "-O 下 verify 必须非零退出")
+        self.assertIn("VERIFY_FAIL", p.stdout)
 
 
 if __name__ == "__main__":

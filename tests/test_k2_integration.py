@@ -72,8 +72,14 @@ class TestK2B_LiveMode(unittest.TestCase):
     """B1: subprocess 真调 Kotlin 引擎。"""
 
     def setUp(self):
+        from embodied_ai.adapters.edalab import resolve_jar_paths
+
         self.adapter = EdalabAdapter()
-        self.jar = Path(r"C:\Users\bnna7\workspace\EdaLab\edalabcore\build\libs\edalabcore.jar")
+        # 与生产代码同一解析 (vendor jar 优先 → 外部 EdaLab 回退)。此前这里写死
+        # C:\Users\<用户名>\workspace\EdaLab\...\edalabcore.jar —— 外部源码路径在
+        # 任何别的机器上都不存在, 于是本用例在别处**恒 skip**, vendor jar 的 live
+        # 路径实际上从未被测试覆盖。
+        self.jar = resolve_jar_paths()["core"]
 
     def test_dry_mode_default(self):
         r = self.adapter.run_stage("relay_clutch", {})
@@ -82,8 +88,8 @@ class TestK2B_LiveMode(unittest.TestCase):
 
     def test_live_relay_clutch(self):
         """live 冒烟: relay-clutch 真调, 断言 Kotlin 引擎输出。"""
-        if not self.jar.exists():
-            self.skipTest("jar 未构建 (需 ./gradlew :edalabcore:jar)")
+        if self.jar is None:
+            self.skipTest("edalabcore.jar 缺失 (vendor/edalab/ 或 ./gradlew :edalabcore:jar)")
         r = self.adapter.run_stage("relay_clutch", {}, mode="live")
         self.assertEqual(r["status"], "LIVE_OK",
                          f"live 调用失败: {r.get('stderr', r.get('error', ''))[:200]}")

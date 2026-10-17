@@ -4,6 +4,71 @@
 
 ---
 
+## v1.1 (2026-10-17) — 验收诚实化：把"绿色但无效"的判据改成能失败的判据
+
+> 起因: 对 v1.0 Sprint M 与全项目的两轮审计。结论是工程自觉度高，但风险不在
+> "没做"，而在 **自证当验收** 与 **口径漂移**。本轮不新增能力模块，只把已宣称
+> 的验收变成真验收，并把静默失败改成显式报错。
+>
+> **verify 35/35 PASS 不变；pytest 580 → 632 passed**（+52 项，全部是"这条判据
+> 真的能失败"的负对照与回归守护）。
+
+### A. 验收判据去自我认证（P0）
+
+| 项 | 原状态 | 修法 |
+|---|---|---|
+| `v2a_demo()` | 返回字典里 `v2a_equals_vla_none` / `lang_changes_output` 是**硬编码字面量 `True`**，而 `check_vla_v2a` 与测试断言的就是这两个字面量 → 等价性守护是自我认证，改坏也照样 PASS | 改为 `bool(np.allclose(...))` 实测值；verify 现在断言真实计算结果 |
+| `infer_v2a ≡ infer_vla(None)` | `infer_v2a` 就是 `return infer_vla(v, None, s)` → 断言恒真（同义反复） | 补**真正可失败**的交叉核验：`torch_shape_contract()` 对齐 numpy 头与 torch `VLAModel` 的动作形状契约（此前两套实现零交叉验证） |
+| `modality="v2a"` | 声明了 v2a（纯视觉），但 `infer_vla` 仍消费 `lang_ids` → 语言静默影响动作，"纯视觉"名不副实 | v2a 模态传入语言直接 `ValueError` |
+| SLAM `<0.3m` 收敛 | `R_OBS` 注释写 "std" 却当**方差**用（`S = HPHᵀ+R`），量纲错 2.6x/4.5x；且 demo 生成噪声与滤波器 R 完全相同 → 匹配滤波自评 | R 改为 σ² 具名常量；补 `obs_noise_scale` 失配曲线：匹配 0.013m / 2x 0.082m / **3x 0.385m 必须超阈**（负对照，证明判据有区分力） |
+| 分频串扰 `<-20dB` | demo 算微波串扰时抽取率用魔数 `round(fs/2000)=4`，而 `demux` 实际是 `round(fs/8000)=1` → 内积在**错位时间基**上进行，`-147.9dB` 是数值噪声不是测量 | 抽取率单一真源 `Channelizer.decimation()`；补负对照：不分频时串扰必须 >-20dB（实测 -2.9dB） |
+| 认知中枢"时间衰减排序" | `exp(-λΔt)` 是单调变换**不改变次序** → 实测 λ=0.001/0.1/50.0 召回序完全相同，`DECAY_RATE` 是装饰参数 | 增 `remember_scored()` 暴露得分，使衰减可被数值验证 |
+
+### B. 静默失败 → 显式报错（P1）
+
+| 位置 | 原静默行为 | 现行为 |
+|---|---|---|
+| `slam._augment_landmark(mz=…)` / `landmark_position()` | `mz` 收下即丢，z **硬编码返回 0.0** → "三维坐标"的对象 z 是假的（实测传 1.75 得 0.0） | 按路标存储 z 直通值；docstring 明确 z 不进协方差、不是估计量 |
+| `slam.predict()` | 运动雅可比取在**积分后的 θ** 上（`θ += ω·dt` 先于构造 F） | 改用积分前 θ；补有限差分对拍测试 |
+| `PoseSnapshot.position` | 被塞入 4 维 `robot_pose`（含 θ）而不被察觉 | `__post_init__` 强校验 3 维 |
+| `bus.step_via_bus()` | 使用**从未被赋值的**闭包常量 `_last_obs_joints` → "观测经 Bus 流转"路径**永远执行全零观测**；且每次调用新建 Collector 重复 subscribe（订阅者无限增长）。12 项测试与 verify 全部放行 | 删除死变量，改用 `on_observation` 回环写入的 `_last_obs`；不再重复订阅；补两条回归测试（观测真流转 + `subscriber_count` 恒定） |
+| `CognitiveHub.plan()` | 未知目标返回 `[]`，与"前置条件已满足"不可区分（docstring 承诺的"并标注"并不存在） | 未知目标抛 `KeyError` |
+| `EpisodicMemory.query()` | 只给 `location_center` 不给 `location_radius` 时**静默跳过地点过滤**（实测 99m 外事件照样返回） | 二者缺一即抛 `ValueError` |
+| `POSE_UPDATE` topic | plan_v5 M5 宣称交付，但 src 与 tests 里**零发布者、零订阅者** → "SLAM→认知中枢地点要素"只存在于 docstring | `PoseStore(bus=…)` 真发布、`CognitiveHub` 真订阅并暴露 `latest_pose()`；补端到端测试与 verify 守护 |
+
+### C. provenance 与诚实标注整改（P1）
+
+| 项 | 修法 |
+|---|---|
+| **D4 数据集把 rng 剧本标为实测** | `export_training_jsonl()` 不再由导出器断言 `real_fields`，改为**由记录 `source` 推导** `telemetry_provenance` ∈ measured/synthetic；`MEASURED_SOURCES` 单一真源并被 `replay_dataset` 复用（此前两处各写一套词汇表，同一份数据在导出头与训练侧得到相反结论）。当前 D4 归类 `synthetic`（`source="replay_gen"`，无物理引擎、无硬件在环）。**41811 条记录逐字节不变，仅 header 更正** |
+| `NeRFGuidedMCTS`（降级清单已裁定不做） | docstring 曾写"基类补全后自动可用"，实为恒真占位过滤器 → 显式标注**未实现**并逐条列明哪些是空的；补 `test_demotion_list_honesty.py` 双向守护（占位若被实现，测试失败并逼作者同步更新口径） |
+| `AsyncMCTSPlanner` | docstring 曾宣称"在独立线程/进程中跑 MCTS 不阻塞 20Hz 主循环"，实为纯同步且真挂在生产控制栈上 → 标注**实为同步**并写明对 20Hz 环的影响 |
+| `FIRST_MOVE.md` Lab 5 | 删去无出处的 `1A ≈ 0.5N` 换算；示例输出原为**编造**（与脚本降序矛盾、结论句与自己列出的数字冲突、443.5N 远超项目自引的 60N 指尖极限）→ 换成 2026-10-17 实跑结果，并明确"能说明管线正确、不能说明是物理发现" |
+| `docs/11` R3 行 | 证据已过期（写死的个人路径已改四级 env/fixture 解析；"仓库内 fixture 数=0"实际已有 `fixtures/experiments_vsa_curve.json` 入库）→ 更新为已闭环 + 剩余待办 |
+| `slam.py` 死代码 | 删除全仓零实例化、仅自测 dataclass 的 `Landmark` |
+
+### D. 工程健康度（P0/P1）
+
+| 项 | 修法 |
+|---|---|
+| **版本四处漂移** | CHANGELOG 已宣称 v1.0，而 `pyproject.toml` / `__init__.__version__` / `verification.VERSION` / README 头部**仍是 0.7.0**（`cli verify` banner 与 `gui /api/status` 对外都报 0.7.0）。现 `__version__` 为**单一真源**，pyproject 经 `[tool.setuptools.dynamic]` 静态提取，`verification.VERSION` 从包导入；新增 `test_version_consistency.py` 钉死四方 + verify 项数 |
+| **`python -O` 让 verify 恒绿** | src 内 139 处 `assert`，35 个 check 的判定**就是** assert；`-O` 剥离断言后 `run_all` 返回假的 VERIFY_OK。现在 `-O` 下拒绝出结论（退出码 1 + 明示原因），并补对照组证明正常解释器仍跑满 35 项 |
+| **仓库内个人机器路径** | 清除 `adapters/afe_ind.py`、`adapters/edalab.py`、`adapters/nanogpt.py`、`cli.py`、`FIRST_MOVE.md`、`tests/` 中的 `C:\Users\<用户名>\…`（用户名被发布进公开仓库，且违反"clone 后仅需 JRE"承诺）。新增 `embodied_ai/paths.py`：env 覆盖优先 + 主目录推导兜底 + **永不抛错**（`Path.home()` 在最小 env 下 RuntimeError，而这些常量在 import 期求值会拖垮整包 —— 该坑由 `test_cli_registry` 抓到并补了回归） |
+| `afe_ind.rerun_live` | 曾绕过 vendor jar 自行拼 classpath 与 java.exe → 改为复用 `edalab.resolve_jar_paths()/build_classpath()/resolve_java()`（vendor 优先）。副作用正向：**vendor jar 的 live Kotlin 调用路径此前因写死外部路径而恒 skip，现在真的执行了** |
+| `EDALAB_HOME` / `EDALAB_ROOT` 双 env 名 | 统一为 `EDALAB_ROOT` |
+| 依赖治理 | `numpy>=1.24` 下限；新增 `real = ["python-can","pyserial"]` extra（真机传输层的隐形依赖，此前任何 extras 都不含）；`pytest>=7.0,<10` |
+| 操作性文档旧口径 | `FIRST_MOVE.md` / `docs/15` 残留 "28/28 + 441 passed"（照做的人会以为 35/35 是异常）→ 改为"以实时输出为准"写法，并加守护测试禁止旧数字回流；`CHANGELOG` 摘掉遗留的 "v0.8 (进行中)" 标签；`cli.py` 三个 M 系列 demo 的 `since` 由 v0.9 更正为 v1.0 |
+
+### 遗留（本轮**未**做）
+
+- CI 仍无真实 lint/type-check/覆盖率门禁（名为 `lint` 的 job 只做 import + CLI 冒烟）。
+- `verification.py`(1074 行) 35 个 check 仍是同构样板，未表驱动化；`cli.py`(1086 行) 未拆。
+- 6 个模块无直接测试（`deploy/latency_audit`、`planning/roadmap_data`、`simulation/mujoco_env`、`pybullet_env` 等）；torch 用例在 CI 恒 skip。
+- 根目录 7 份 plan/记录文档未归档进 `docs/plans/`；`experiments/d4_test_tmp/` 仍在索引内。
+- `sim_to_real` / `real_robot` 仍是 mock（诚实声明已在 CHANGELOG/README，但展示名未加 "(mock)" 后缀）。
+
+---
+
 ## v1.0 (2026-10-17) — Sprint M：机器人端补全（多传感器信道 / VLA 双路径 / SLAM / 认知中枢）
 
 > 计划文档: [plan_v5.md](plan_v5.md)（M1-M5）。补全机器人端四大缺口，全部为可运行代码模块。
@@ -44,7 +109,7 @@
 
 ---
 
-## v0.8 (进行中, 2026-10-07) — v4「jar 入库 + 消费」定为硬件端唯一调用方式
+## v0.8 (2026-10-07) — v4「jar 入库 + 消费」定为硬件端唯一调用方式
 
 ### 仓库边界：只提供 jar，**不暴露 EdaLab 源码**
 

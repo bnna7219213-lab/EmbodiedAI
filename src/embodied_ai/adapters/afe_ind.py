@@ -330,38 +330,40 @@ def contract_alignment(
 # ------------------------------------------------------------------ #
 # Live 模式: subprocess 调 EdaCli afe-ind 重跑 (可选)
 # ------------------------------------------------------------------ #
-def rerun_live(output_dir: Optional[Path] = None,
-               edalab_dir: Optional[Path] = None,
+def rerun_live(edalab_dir: Optional[Path] = None,
                timeout_sec: int = 120) -> Dict[str, Any]:
     """Live 模式: subprocess 调 EdaLab EdaCli afe-ind 重新生成产物.
 
-    **不改动 EdaLab 代码** — 只调用其 CLI, 把输出写到指定目录.
+    **不改动 EdaLab 代码** — 只调用其 CLI。产物落点在 `<cwd>/edalab_out/afe_ind/`
+    是固定的 (EdaCli afe-ind 没有 `-o` 参数), 所以本函数不接受 output_dir;
+    cwd 随 jar 来源决定: vendor → 本仓, 外部源码 → EdaLab 目录。
 
     返回 {status, output_dir, artifact_count, error?}
     """
     eda_dir = Path(edalab_dir) if edalab_dir else edalab_root()
-    jar = eda_dir / "edalabcore" / "build" / "libs" / "edalabcore.jar"
-    if not jar.exists():
+    from . import edalab
+
+    # jar / classpath / java 一律复用 edalab 的解析 (vendor 优先 → 外部源码 →
+    # GRADLE_USER_HOME)。此前这里自己拼了一份: 写死 C:/Users/<用户>/.gradle 的
+    # kotlin-stdlib 路径和 C:/Users/<用户>/.jdks 的 java.exe —— 把个人机器布局
+    # 提交进公开仓库, 且完全绕过 vendor jar, 与"v0.8: jar 入库+消费是硬件端唯一
+    # 调用方式"的决策冲突。
+    jars = edalab.resolve_jar_paths()
+    if jars["core"] is None:
         return {"status": "LIVE_FAIL",
-                "error": f"edalabcore.jar 不存在 (先 ./gradlew :edalabcore:jar): {jar}"}
+                "error": f"edalabcore.jar 不存在 (vendor/edalab/ 与 {eda_dir} 下均无; "
+                         f"外部源码需先 ./gradlew :edalabcore:jar)"}
+    cp = edalab.build_classpath()
+    if cp is None:
+        return {"status": "LIVE_FAIL", "error": "classpath 构造失败"}
+    try:
+        java = edalab.resolve_java()
+    except FileNotFoundError as e:
+        return {"status": "LIVE_FAIL", "error": str(e)}
 
-    out_dir = Path(output_dir) if output_dir else _REPO_ROOT / "edalab_out_rerun"
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    # EdaCli afe-ind 无 -o 参数, 固定输出到 <cwd>/edalab_out/afe_ind/
-    cwd = eda_dir
-    stdlib = "C:/Users/bnna7/.gradle/caches/modules-2/files-2.1/org.jetbrains.kotlin" \
-             "/kotlin-stdlib/2.2.21/fa374a986e128314c3db00a20aae55f72a258511/" \
-             "kotlin-stdlib-2.2.21.jar"
-    import shutil as _sh
-    java = _sh.which("java")
-    if not java:
-        fb = Path(r"C:\Users\bnna7\.jdks\ms-17.0.18\bin\java.exe")
-        java = str(fb) if fb.exists() else None
-    if not java:
-        return {"status": "LIVE_FAIL", "error": "java 不可用"}
-
-    cp = f"{jar};{stdlib}"
+    # EdaCli afe-ind 无 -o 参数, 固定输出到 <cwd>/edalab_out/afe_ind/。
+    # 用 vendor jar 时就在本仓内跑 → 产物落本仓; 用外部源码时仍在 EdaLab 目录。
+    cwd = eda_dir if jars["source"] == "external" else _REPO_ROOT
     cmd = [java, "-Dfile.encoding=UTF-8", "-Dstdout.encoding=UTF-8",
            "-Dstderr.encoding=UTF-8", "-cp", cp, "edalab.core.cli.EdaCli",
            "afe-ind"]
@@ -376,8 +378,8 @@ def rerun_live(output_dir: Optional[Path] = None,
         return {"status": "LIVE_NONZERO", "returncode": proc.returncode,
                 "stdout_tail": stdout[-2000:]}
 
-    # 产物路径固定: edalab_out/afe_ind/
-    produced = eda_dir / "edalab_out" / "afe_ind"
+    # 产物路径固定: <cwd>/edalab_out/afe_ind/ (cwd 见上, 随 jar 来源而变)
+    produced = cwd / "edalab_out" / "afe_ind"
     count = len(list(produced.glob("*"))) if produced.exists() else 0
     return {"status": "LIVE_OK", "output_dir": str(produced),
             "artifact_count": count, "stdout_tail": stdout[-1500:]}

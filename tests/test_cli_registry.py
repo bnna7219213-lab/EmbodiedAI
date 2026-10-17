@@ -113,3 +113,65 @@ def test_duplicate_registration_did_not_corrupt_registry():
     """反证后注册表仍完好 (verify 的 handler 未被 dummy 替换)。"""
     spec = CLI_REGISTRY["verify"]
     assert spec.handler is cli_mod.cmd_verify
+
+
+# --------------------------------------------------------------------------- #
+# 最小 env 下的可导入性 (外部路径解析不得在 import 期抛错)
+# --------------------------------------------------------------------------- #
+
+def _minimal_env() -> dict:
+    """只留跑起来必需的四项 —— 故意不含 HOME / USERPROFILE / HOMEPATH。"""
+    import os
+    return {k: v for k, v in {
+        "PYTHONPATH": str(REPO / "src"),
+        "PYTHONIOENCODING": "utf-8",
+        "PATH": os.environ.get("PATH", ""),
+        "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""),
+    }.items() if v}
+
+
+def test_package_imports_without_home_dir():
+    """`Path.home()` 在无 HOME/USERPROFILE 时会 RuntimeError, 而这些外部仓库
+    默认路径是**模块导入期**求值的 —— 一旦抛错整个包都 import 不了, 表现为
+    CLI `--help` 空输出 + 退出码 1 (曾由 adapters/edalab.py 的 EDALAB_ROOT 触发)。
+    """
+    import subprocess
+
+    code = ("import embodied_ai.paths as p;"
+            "p.home();"
+            "from embodied_ai.adapters.edalab import EDALAB_ROOT, gradle_cache_dir;"
+            "from embodied_ai.adapters.nanogpt import NANOGPT_ROOT;"
+            "import embodied_ai.cli;"
+            "print('OK', bool(EDALAB_ROOT) and bool(gradle_cache_dir()) and bool(NANOGPT_ROOT))")
+    r = subprocess.run([sys.executable, "-c", code], capture_output=True,
+                       cwd=str(REPO), env=_minimal_env(), timeout=180)
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")[-1200:]
+    assert r.stdout.decode("utf-8", "replace").strip().startswith("OK True")
+
+
+def test_cli_help_works_without_home_dir():
+    """CLI 冒烟同样必须在最小 env 下可用 (test_k7_integration 依赖这一点)。"""
+    import subprocess
+
+    r = subprocess.run([sys.executable, "-m", "embodied_ai.cli", "--help"],
+                       capture_output=True, cwd=str(REPO),
+                       env=_minimal_env(), timeout=180)
+    assert r.returncode == 0, r.stderr.decode("utf-8", "replace")[-1200:]
+    out = r.stdout.decode("utf-8", "replace")
+    for name in ("verify", "catalog", "fusion-demo", "slam-demo", "cog-demo"):
+        assert name in out, f"--help 缺命令 {name}"
+
+
+def test_ext_root_env_var_wins_and_never_raises():
+    from embodied_ai.paths import ext_root
+
+    import os
+    key = "EMBODIED_TEST_EXT_ROOT"
+    os.environ[key] = str(REPO / "vendor")
+    try:
+        assert ext_root(key, "nope", "Nope") == REPO / "vendor"
+    finally:
+        del os.environ[key]
+    # 无 env、无主目录线索时退到相对路径, 而不是抛 RuntimeError
+    p = ext_root(key, "workspace", "EdaLab")
+    assert p.parts[-2:] == ("workspace", "EdaLab")
