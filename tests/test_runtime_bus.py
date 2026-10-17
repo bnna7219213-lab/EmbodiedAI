@@ -115,6 +115,45 @@ class TestControllerBusIntegration(unittest.TestCase):
         self.assertEqual(len(act_c.messages), 1)
         self.assertEqual(act_c.last.source, "controller_20hz")
 
+    def test_step_via_bus_actually_routes_observation(self):
+        """回归: step_via_bus 曾把观测丢给一个从未被赋值的常量 _last_obs_joints,
+        导致"观测经 Bus 流转"的路径**永远执行全零观测**, 而测试全绿。"""
+        seen = []
+
+        class _Stub:
+            def step(self, obs):
+                seen.append(np.asarray(obs["joint_positions"]).copy())
+                return np.asarray(obs["joint_positions"]) * 2.0
+
+        bus = InProcessBus("test_via_bus")
+        ctrl = _Stub()
+        make_bus_backed_controller(ctrl, bus)
+        joints = np.arange(12, dtype=float) + 1.0
+        out = ctrl.step_via_bus({"joint_positions": joints})
+        self.assertEqual(len(seen), 1)
+        self.assertTrue(
+            np.allclose(seen[0], joints),
+            f"控制器收到 {seen[0]}, 期望 {joints} — 观测未真正经 Bus 流转")
+        self.assertTrue(np.allclose(out, joints * 2.0))
+        self.assertTrue(np.allclose(ctrl.last_observation()["joint_positions"], joints))
+
+    def test_step_via_bus_does_not_leak_subscribers(self):
+        """回归: 曾每次调用新建 Collector 并重复 subscribe, 订阅者无限增长。"""
+        class _Stub:
+            def step(self, obs):
+                return np.zeros(12)
+
+        bus = InProcessBus("test_leak")
+        ctrl = _Stub()
+        make_bus_backed_controller(ctrl, bus)
+        act = Collector()
+        bus.subscribe(Topic.ACTION, act)
+        for _ in range(5):
+            ctrl.step_via_bus({"joint_positions": np.ones(12)})
+        self.assertEqual(len(act.messages), 5)
+        self.assertEqual(bus.subscriber_count(Topic.OBSERVATION), 1,
+                         "OBSERVATION 订阅者应恒为 1 (回环), 不得随调用增长")
+
     def test_can_frame_is_first_class(self):
         """CAN-FD 帧经 Bus 流转后仍可解码 (复用 DBC 600 帧验证路径)。"""
         from embodied_ai.simulation.real_robot_env import (CANFrame,

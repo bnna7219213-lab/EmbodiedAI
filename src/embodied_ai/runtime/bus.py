@@ -151,6 +151,12 @@ class InProcessBus:
         with self._lock:
             return [t.value for t, hs in self._subs.items() if hs]
 
+    def subscriber_count(self, topic: Union[Topic, str]) -> int:
+        """某主题的订阅者数量 — 用来发现"每次调用重复 subscribe"的泄漏。"""
+        t = self._to_topic(topic)
+        with self._lock:
+            return len(self._subs.get(t, []))
+
     @staticmethod
     def _to_topic(t: Union[Topic, str]) -> Topic:
         if isinstance(t, Topic):
@@ -196,6 +202,12 @@ def make_bus_backed_controller(controller, bus: InProcessBus,
     原 step() 行为完全保留（向后兼容 — 既有 494 个测试不破）。
     """
     original_step = controller.step
+    _last_obs = {"joint_positions": np.zeros(12)}
+
+    def on_observation(msg: Message) -> None:
+        _last_obs["joint_positions"] = msg.payload["joint_positions"]
+
+    bus.subscribe(Topic.OBSERVATION, on_observation)
 
     def step_with_bus(obs):
         action = original_step(obs)
@@ -208,28 +220,25 @@ def make_bus_backed_controller(controller, bus: InProcessBus,
         return action
 
     def step_via_bus(obs):
-        """观测经 Bus 流转的版本: 发布 → 订阅者(此处为回环)收到 → 再执行。"""
+        """观测经 Bus 流转的版本: 发布 → on_observation 回环收到 → 再执行。
+
+        publish 是同步分发, 所以上面的 on_observation 在 publish 返回前已写入
+        _last_obs —— 这就是"感知节点发布、控制器订阅"的最小闭环。
+
+        曾经这里每次调用新建 Collector 并重复 subscribe（订阅者无限增长）, 而
+        真正喂给 original_step 的是一个从未被赋值的常量 _last_obs_joints,
+        即该路径**永远执行全零观测**, 却被测试与 verify runtime_bus 放行。
+        """
         bus.publish(Topic.OBSERVATION,
                     {"joint_positions": np.asarray(obs.get("joint_positions",
                                                            np.zeros(12)))},
                     source=source)
-        # 从 Bus 取最近一条 OBSERVATION（真实场景: 感知节点发布, 控制器订阅）
-        collector = Collector()
-        bus.subscribe(Topic.OBSERVATION, collector)
-        # 回放最近消息给新订阅者（简化: 直接用 last_observation）
-        action = original_step({"joint_positions": _last_obs_joints})
+        action = original_step({"joint_positions": _last_obs["joint_positions"]})
         bus.publish(Topic.ACTION, {"action": np.asarray(action)},
                     source=source)
         return action
 
-    _last_obs = {"joint_positions": np.zeros(12)}
-
-    def on_observation(msg: Message) -> None:
-        _last_obs["joint_positions"] = msg.payload["joint_positions"]
-
-    bus.subscribe(Topic.OBSERVATION, on_observation)
-    _last_obs_joints = np.zeros(12)
-
     controller.step = step_with_bus
     controller.bus = bus
     controller.step_via_bus = step_via_bus
+    controller.last_observation = lambda: dict(_last_obs)
