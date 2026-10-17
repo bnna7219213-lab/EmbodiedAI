@@ -75,12 +75,38 @@ class TestVLAPolicy:
         with pytest.raises(ValueError):
             p.infer_v2a(np.zeros((cfg.num_views, cfg.vision_embd)), np.zeros(3))
 
+    def test_v2a_modality_rejects_language(self):
+        """v2a 契约是"纯视觉构成判断依据" — 静默吃掉语言会让契约名存实亡。"""
+        cfg = VLAConfig(modality="v2a")
+        p = VLAPolicy(cfg)
+        vision = np.zeros((cfg.num_views, cfg.vision_embd))
+        with pytest.raises(ValueError, match="v2a"):
+            p.infer_vla(vision, np.zeros(cfg.LANG_TOKENS), np.zeros(cfg.state_dim))
+        # 同一 policy 走 vla 模态则接受语言
+        p_vla = VLAPolicy(VLAConfig(modality="vla"))
+        p_vla.infer_vla(vision, np.zeros(cfg.LANG_TOKENS), np.zeros(cfg.state_dim))
+
     def test_demo_assertions(self):
         r = v2a_demo()
+        # 这些必须是实测值: 曾经 v2a_demo 直接返回字面量 True, verify 断言的
+        # 就是那个字面量 —— 自我认证, 等价性坏了也照样 PASS。
         assert r["v2a_equals_vla_none"] is True
+        assert r["v2a_rejects_language"] is True
+        assert r["lang_changes_output"] is True
         assert r["min_block_size_v2a"] < r["min_block_size_vla"]
+
+    def test_torch_shape_contract(self):
+        """numpy 头与 torch VLAModel 的动作形状必须一致, 防止两套实现漂移。"""
+        from embodied_ai.models.vla_v2a import torch_shape_contract
+
+        contract = torch_shape_contract()
+        if contract is None:
+            pytest.skip("无 torch, 跳过形状契约交叉核验")
+        torch_shape, np_shape = contract
+        assert torch_shape == np_shape
 
     def test_no_torch_dependency(self):
         import embodied_ai.models.vla_v2a as m
-        # vla_v2a 自身不 import torch（模块顶层验证）
+        # vla_v2a 自身不 import torch（模块顶层验证; torch 仅在
+        # torch_shape_contract() 内按需导入）
         assert "torch" not in m.__dict__

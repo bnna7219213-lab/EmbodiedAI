@@ -27,11 +27,13 @@
 
 **反证要求（测试守护）**
     v2a ≡ vla(None) 数值一致；modality="v2a" 时 min_block_size 少 LANG_TOKENS；
-    无 torch 环境可跑；坏输入形状报错。
+    **modality="v2a" 传入语言必须报错**（否则"纯视觉"契约名存实亡）；
+    numpy 头与 torch VLAModel 的动作形状契约不漂移；无 torch 环境可跑；
+    坏输入形状报错。
 """
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
 
@@ -93,7 +95,15 @@ class VLAPolicy:
         """vision(+language) → action: 返回 [action_horizon, action_dim]。
 
         lang_ids=None 时退化为纯视觉路径（与 infer_v2a 等价）。
+
+        Raises:
+            ValueError: modality="v2a" 却传入了语言 —— v2a 契约是"纯视觉构成
+                判断依据", 静默忽略语言会让调用方误以为语言生效。
         """
+        if self.cfg.modality == "v2a" and lang_ids is not None:
+            raise ValueError(
+                "modality='v2a' 是纯视觉路径, 不接受语言输入; "
+                "需要语言请改用 VLAConfig(modality='vla')")
         v = self._vision_flat(vision_feats)
         s = self._state_flat(state)
         x = np.concatenate([v, [self._lang_scalar(lang_ids)], s])
@@ -111,30 +121,81 @@ class VLAPolicy:
 # ══════════════════════════════════════════════════════════════════
 
 def v2a_demo() -> dict:
-    """演示 v→action 与 v+l→action 双路径: 等价性 + 形状契约。"""
+    """演示 v→action 与 v+l→action 双路径: 等价性 + 形状契约。
+
+    所有布尔字段都是**实测计算值**, 不是硬编码 —— verify 断言的就是这些值,
+    写死 True 会让 check_vla_v2a 变成自我认证 (曾经如此, 已修)。
+    """
     cfg = VLAConfig(modality="v2a")
     policy = VLAPolicy(cfg)
     rng = np.random.default_rng(0)
     vision = rng.normal(size=(cfg.num_views, cfg.vision_embd))
     state = rng.normal(size=cfg.state_dim)
+    lang = rng.normal(size=cfg.LANG_TOKENS)
 
     a_v2a = policy.infer_v2a(vision, state)
     a_vla_none = policy.infer_vla(vision, None, state)
-    lang = rng.normal(size=cfg.LANG_TOKENS)
-    a_vla = policy.infer_vla(vision, lang, state)
+    equals = bool(np.allclose(a_v2a, a_vla_none))
+
+    # v2a 模态必须拒绝语言 (否则"纯视觉"契约名存实亡)
+    try:
+        policy.infer_vla(vision, lang, state)
+    except ValueError:
+        rejects_lang = True
+    else:
+        rejects_lang = False
+
+    # 语言生效性要在 vla 模态下测 (同 seed → 同权重, 唯一变量是模态)
+    vla_policy = VLAPolicy(VLAConfig(modality="vla"))
+    lang_changes = bool(not np.allclose(
+        vla_policy.infer_vla(vision, None, state),
+        vla_policy.infer_vla(vision, lang, state)))
 
     assert a_v2a.shape == (cfg.action_horizon, cfg.action_dim)
-    assert np.allclose(a_v2a, a_vla_none), "v2a 与 vla(None) 不等价"
-    assert not np.allclose(a_v2a, a_vla), "语言输入应改变输出（否则语言通道未生效）"
+    assert equals, "v2a 与 vla(None) 不等价"
+    assert rejects_lang, "modality='v2a' 未拒绝语言输入"
+    assert lang_changes, "语言输入应改变输出（否则语言通道未生效）"
     assert cfg.min_block_size == (cfg.total_vision_tokens + 1 + cfg.action_horizon + 1)
+
     return {
         "modality": cfg.modality,
         "action_shape": list(a_v2a.shape),
-        "v2a_equals_vla_none": True,
-        "lang_changes_output": True,
+        "v2a_equals_vla_none": equals,
+        "v2a_rejects_language": rejects_lang,
+        "lang_changes_output": lang_changes,
         "min_block_size_v2a": cfg.min_block_size,
         "min_block_size_vla": VLAConfig(modality="vla").min_block_size,
     }
+
+
+def torch_shape_contract() -> Optional[Tuple[Tuple[int, ...], Tuple[int, ...]]]:
+    """numpy VLAPolicy 与 torch VLAModel 的动作形状契约交叉核验。
+
+    两套实现 (vla_v2a.py 的 numpy 头 / vla_model.py 的 torch 前向) 各自演进
+    会静默漂移。这里只对齐**形状契约** —— 不比数值 (numpy 头是 synthetic 权重,
+    与训练产物无可比性), 但保证 action_horizon/action_dim 两边一致, 且
+    VLAModel 的 lang_ids=None 无语言路径确实可跑。
+
+    Returns:
+        (torch_shape, numpy_shape); 无 torch 时 None。
+    """
+    try:
+        import torch
+        from .vla_model import VLAModel
+    except ImportError:
+        return None
+    cfg = VLAConfig(modality="v2a")
+    model = VLAModel(cfg)
+    frames = torch.zeros(cfg.num_views, 3, cfg.img_size, cfg.img_size)
+    state_t = torch.zeros(1, cfg.state_dim)
+    out = model.inference(frames.unsqueeze(0).reshape(-1, *frames.shape[1:]),
+                          None, state_t)
+    np_shape = VLAPolicy(cfg).infer_v2a(
+        np.zeros((cfg.num_views, cfg.vision_embd)), np.zeros(cfg.state_dim)).shape
+    torch_shape = tuple(out.shape[1:])
+    assert torch_shape == np_shape, (
+        f"形状契约漂移: torch VLAModel {torch_shape} != numpy VLAPolicy {np_shape}")
+    return torch_shape, np_shape
 
 
 if __name__ == "__main__":
@@ -142,6 +203,9 @@ if __name__ == "__main__":
     print("V-to-action demo (head 权重 provenance=synthetic)")
     print(f"modality={r['modality']}, action shape={r['action_shape']}")
     print(f"v2a ≡ vla(lang=None): {r['v2a_equals_vla_none']} ✓")
-    print(f"语言改变输出: {r['lang_changes_output']} ✓")
+    print(f"v2a 拒绝语言输入: {r['v2a_rejects_language']} ✓")
+    print(f"语言改变输出 (vla 模态): {r['lang_changes_output']} ✓")
     print(f"min_block_size: v2a={r['min_block_size_v2a']} < vla={r['min_block_size_vla']} "
           f"(省 {r['min_block_size_vla'] - r['min_block_size_v2a']} 语言 token)")
+    contract = torch_shape_contract()
+    print(f"torch 形状契约: {contract if contract else '无 torch, 跳过'}")
