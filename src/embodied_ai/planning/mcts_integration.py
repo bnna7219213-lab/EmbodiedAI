@@ -521,7 +521,20 @@ if HAS_TORCH:
 # ============================================================================
 
 class NeRFGuidedMCTS(ClimbingMCTS):
-    """用 NeRF 场景表征增强 MCTS 规划。K2: 基类补全后自动可用。"""
+    """**未实现** —— NeRF 引导部分全是占位, 请勿当作可用能力引用。
+
+    plan.md 降级清单 (与 plan_v3 / docs/11 §"NeRF/VQ/async") 已裁定 NeRF 方向
+    **不做**, docs/11 进一步要求"删除 NeRFGuidedMCTS 或标注'未实现'"。此处取
+    后者: 类保留是为了不破坏 `planning.__all__` 与 roadmap_data 的条目引用。
+
+    实际状态 (与旧 docstring "K2: 基类补全后自动可用" 相反 —— 基类补全了,
+    NeRF 侧依旧没有):
+      · `_collision_free()` / `_ik_feasible()` 恒返回 True → get_actions 的
+        "可达性和碰撞过滤"是**空操作**, 一个候选都过滤不掉。
+      · `heuristic_value()` 的 scene_feat 是 `torch.randn` 占位, 不是任何
+        NeRF 渲染/体查询结果; nerf_scene=None 时直接退回 stability_margin。
+      · 全仓无任何 NeRF 训练或推理代码 (grep nerf 仅命中本类与占位注释)。
+    """
 
     def __init__(self, *args, nerf_scene=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -549,11 +562,12 @@ class NeRFGuidedMCTS(ClimbingMCTS):
             return self.value_net(scene_feat, proprio).item()
 
     def _collision_free(self, action: ContactAction) -> bool:
-        # K3: NeRF SDF 查询; K2: 始终可行为占位
+        # 占位: 恒真 → 碰撞检测从未发生 (NeRF SDF 查询在降级清单里已裁定不做)
         return True
 
     def _ik_feasible(self, action: ContactAction) -> bool:
-        # K3: IK 求解; K2: 始终可行为占位
+        # 占位: 恒真 → 可达性过滤从未发生 (整体控制栈另有可用的 IK, 见
+        # control/whole_body.py; 这里没有接它)
         return True
 
 
@@ -563,7 +577,16 @@ class NeRFGuidedMCTS(ClimbingMCTS):
 # ============================================================================
 
 class AsyncMCTSPlanner:
-    """异步 MCTS 规划 — 在独立线程/进程中跑 MCTS 不阻塞 20Hz 主循环。"""
+    """**实为同步** MCTS 规划器 —— 名字里的 Async 是历史遗留, 不承诺异步。
+
+    docs/11 对降级清单的处置要求是"async…要么实现要么诚实标注同步", 这里取
+    后者: 全类无 threading/multiprocessing/asyncio, `plan()` 与 `replan()` 都是
+    阻塞调用, 直接跑满 `mcts.search()` 的 n_simulations 次展开。
+
+    对 20Hz 控制环的影响 (household_robot_system.py:39 把它挂在 task_planner 上):
+    单次 `plan()` 的耗时会**阻塞主循环**, 上游若需要非阻塞语义必须自行放到线程
+    或进程里, 不能依赖本类的命名。
+    """
 
     def __init__(self, mcts: Optional[ClimbingMCTS] = None, dr_config: Dict = None):
         self.mcts = mcts or ClimbingMCTS(n_simulations=100)

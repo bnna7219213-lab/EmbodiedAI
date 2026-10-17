@@ -243,11 +243,12 @@ python scripts/inject_hil_measurements.py \
 ```bash
 # 1. verify 全绿
 python -m embodied_ai.cli verify --no-pytest
-# 预期: 28/28 PASS (部分项从 provisional 升级到 validated)
+# 预期: N/N PASS + RESULT=VERIFY_OK (N = verification.CHECKS 项数, 当前 35)
+#       判据是"全部通过", 不是某个具体数字 —— 项数会随能力增长。
 
 # 2. pytest 全绿
 python -m pytest tests/ -q
-# 预期: 441+ passed
+# 预期: 全部 passed (+ 环境性 skip, 如无 checkpoint 时)
 
 # 3. selfcheck 全绿
 python -m embodied_ai.cli selfcheck

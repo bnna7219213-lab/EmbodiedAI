@@ -307,11 +307,12 @@ def run_climb_cycle(seed: int = 42, n_steps: int = 4) -> ClimbCycleResult:
     )
 
     # [4] VSA 蓄能 → dyno 初速 (P1.3 真实消费, live JSON)
-    # P0 修复: 原代码硬编码 C:\Users\bnna7\workspace\EdaLab\..., 他机/CI 必 FileNotFoundError。
+    # P0 修复: 原代码硬编码 C:\Users\<用户名>\workspace\EdaLab\..., 他机/CI 必
+    # FileNotFoundError。
     # 现在按优先级解析:
     #   1. 环境变量 EDALAB_VSA_JSON (显式覆盖)
     #   2. 仓库内 fixtures/experiments_vsa_curve.json (随仓库分发的 provenance 快照)
-    #   3. EdaLab 工作目录环境变量 EDABED_HOME / workspace/EdaLab
+    #   3. EdaLab 工作目录环境变量 EDALAB_ROOT / <repo根>/../../workspace/EdaLab
     #   4. 兜底: 抛清晰错误指明如何生成/放置
     import os as _os
     _vsa_candidates = []
@@ -320,8 +321,8 @@ def run_climb_cycle(seed: int = 42, n_steps: int = 4) -> ClimbCycleResult:
         _vsa_candidates.append(Path(_env))
     _here = Path(__file__).resolve().parent
     _vsa_candidates.append(_here.parents[2] / "fixtures" / "experiments_vsa_curve.json")
-    if _os.environ.get("EDALAB_HOME"):
-        _vsa_candidates.append(Path(_os.environ["EDALAB_HOME"]) / "experiments_vsa_curve.json")
+    if _os.environ.get("EDALAB_ROOT"):
+        _vsa_candidates.append(Path(_os.environ["EDALAB_ROOT"]) / "experiments_vsa_curve.json")
     # 本机兜底 (仅当环境变量未设, 且不阻塞 CI): 相对 workspace/EdaLab
     _repo_root = _here.parents[2]
     _vsa_candidates.append(_repo_root.parent.parent / "workspace" / "EdaLab"

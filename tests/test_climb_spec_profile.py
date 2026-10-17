@@ -1,6 +1,6 @@
 """test_climb_spec_profile.py — B1: 任务档案参数化 (hw_requirements.yaml → forge-core / motor-drive).
 
-B1 目标: 攀岩腱驱动关节板需求进 EdaLab 引擎 (C:\\Users\\bnna7\\workspace\\EdaLab),
+B1 目标: 攀岩腱驱动关节板需求进 EdaLab 引擎 (外部仓库, 经 vendor/edalab jar 消费),
 11 步主链增加 spec 维度, 默认 household_grasp 行为不变 (向后兼容),
 climbing 导出独立 EPS + FOC 板设计。
 

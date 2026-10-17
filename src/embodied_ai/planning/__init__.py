@@ -1,10 +1,11 @@
-"""L5 接触规划: MCTS + NeRF 价值网络 + Diffusion 策略 + 飞轮 DR 注入。
+"""L5 接触规划: MCTS + Diffusion 策略 + 飞轮 DR 注入。
 
 K2 导出:
   plan_contacts() — 一键接触规划入口
   ClimbingMCTS — 完整 UCB1-MCTS
   ClimbingState / ContactAction / MCTSNode — 数据结构
-  AsyncMCTSPlanner — 异步规划
+  AsyncMCTSPlanner — **实为同步**阻塞规划 (无 threading, 见类 docstring)
+  NeRFGuidedMCTS — **未实现**占位 (NeRF 在 plan.md 降级清单已裁定不做)
   DiffusionPolicy — 条件扩散策略接口
   compute_mc_returns — MC 回报计算
 """

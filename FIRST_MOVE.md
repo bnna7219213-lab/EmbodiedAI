@@ -11,25 +11,29 @@
 **目的**: 确认你本地的代码平台是健康的。
 
 ```bash
-cd C:\Users\bnna7\workspace\git\EmbodiedAI
+cd <你的 EmbodiedAI 仓库根目录>
 
-# 1. 跑 verify (28 项全绿意味着代码平台正常)
+# 1. 跑 verify (全绿意味着代码平台正常)
 python -m embodied_ai.cli verify --no-pytest
-# 期望输出: 汇总: 28/28 PASS  / RESULT=VERIFY_OK
+# 期望输出: 汇总: N/N PASS  / RESULT=VERIFY_OK
+#   N = verification.CHECKS 的项数 (当前 35)。N 会随功能增长, 别把某个具体数字
+#   当成长期契约 —— 判据是"全部通过 + RESULT=VERIFY_OK", 不是"等于 28 或 35"。
 
 # 2. 跑 selfcheck (5 项全绿意味着"单仓自足"成立)
 python -m embodied_ai.cli selfcheck
 # 期望输出: [✅] 1.载体齐全  [✅] 2.指纹一致  [✅] 3.运行时可用  [✅] 4.隔离可跑  [✅] 5.后端可观测
 #           RESULT: SELF_CONTAINED_OK
 
-# 3. 跑 pytest (441 项全绿)
+# 3. 跑 pytest (全绿)
 python -m pytest tests/ -q
-# 期望输出: 441 passed in 90s
+# 期望输出: <N> passed, 1 skipped in ~140s
+#   N 随功能增长 (v1.0 收 Sprint M 时为 580; 本轮诚实化改造补守护用例后更高)。
+#   那 1 个 skip 是无 checkpoint 文件时的环境性跳过, 不是失败。
 
 # 如果某步失败, 记下失败项的名称，这是你的第一个 "待办"
 ```
 
-**这一步的价值**: 即使你什么硬件都没有，代码平台本身就有 441 个可运行的测试。这些测试就是你的"编程作业"。
+**这一步的价值**: 即使你什么硬件都没有，代码平台本身就有数百个可运行的测试。这些测试就是你的"编程作业"。
 
 ---
 
@@ -159,8 +163,8 @@ start artifacts/b1_tendon_drive_package/B1_tendon_drive_pcb.svg
 **Lab 目标**: 对 D4 数据集做分析，找出哪个 scenario 的平均力最大。
 
 ```python
-# 新建一个临时脚本:
-# C:\Users\bnna7\workspace\git\EmbodiedAI\scripts\my_first_lab.py
+# 新建一个临时脚本 (放在仓库根的 scripts/ 下, 与 CWD 无关皆可跑):
+#   <仓库根>/scripts/my_first_lab.py
 
 import json
 from collections import defaultdict
@@ -180,29 +184,45 @@ with open(D4_FILE) as f:
 scenario_currents = defaultdict(list)
 for r in records:
     sc = r.get("scenario", "unknown")
-    # 把电流当成切向力近似: 1A ≈ 0.5N
-    scenario_currents[sc].append(r.get("motor_current_a", 0.0) * 0.5)
+    scenario_currents[sc].append(r.get("motor_current_a", 0.0))
 
 # 打印结果:
-print("D4 数据集 scenario 平均切向力 (N):")
-for sc, forces in sorted(scenario_currents.items(), key=lambda x: -sum(x[1])/len(x[1])):
-    avg_f = sum(forces) / len(forces)
-    print(f"  {sc:20s} 平均 {avg_f:6.1f} N  (基于 {len(forces):5d} 帧)")
+print("D4 数据集 scenario 平均电机电流 (A):")
+for sc, cur in sorted(scenario_currents.items(), key=lambda x: -sum(x[1])/len(x[1])):
+    avg_a = sum(cur) / len(cur)
+    print(f"  {sc:20s} 平均 {avg_a:6.2f} A  (基于 {len(cur):5d} 帧)")
 ```
 
 ```bash
-# 运行:
+# 运行 (期望输出为**实跑结果**, 2026-10-17 在当前 d4_dataset 上产生):
 python scripts/my_first_lab.py
-
-# 期望输出 (示例):
-# D4 数据集 scenario 平均切向力 (N):
-#   climb_dyno            平均  124.8 N  (基于  5720 帧)
-#   climb_grip            平均 443.5 N  (基于  5810 帧)
-#   climb_reach           平均  268.3 N  (基于  5705 帧)
-#   ...
+# D4 数据集 scenario 平均电机电流 (A):
+#   climb_dyno           平均  30.89 A  (基于  5905 帧)
+#   slip_recovery        平均  25.30 A  (基于  6071 帧)
+#   tendon_pump          平均  20.91 A  (基于  5623 帧)
+#   climb_grip           平均  20.20 A  (基于  6016 帧)
+#   climb_reach          平均  13.32 A  (基于  5980 帧)
+#   climb_cross          平均  10.20 A  (基于  6110 帧)
+#   household_grasp      平均   3.95 A  (基于  6106 帧)
 ```
 
-**动脑**: dyno 场景的平均力最大 (124 N) — 这和物理直觉一致吗? 攀岩 dyno 时切向力最高, 因为要对抗重力向上跳。对, 合理。
+**动脑**: dyno 场景平均电流最高 (30.89 A) — 这和物理直觉一致吗? 攀岩 dyno 要对抗重力向上跳,
+需要最大力矩, 因此电流最高。对, 合理。`household_grasp` 最低 (3.95 A) 也符合轻抓取预期。
+
+**这一条能说明什么、不能说明什么** (务必分清):
+- **能说明**: 数据管线的字段搬运和分组统计是对的, 场景之间的**设定差异**被如实保留了。
+- **不能说明**: 这**不是**物理发现。D4 由 `scripts/gen_d4_dataset.py` 的 rng 剧本生成
+  (source=`replay_gen`, 导出头 `telemetry_provenance="synthetic"`), 电流大小来自每个场景
+  手写的 `current_range` 区间 — dyno 排第一是因为脚本就写了 `(20.0, 40.0)`, 与真实电机
+  特性无关。把它读成"我们测得 dyno 需要 31A" 是错误的。
+
+> **为什么这里不报"切向力 (N)"**: 本小节原先写作 `1A ≈ 0.5N` 的换算并给出 124.8/443.5 N
+> 之类的"期望输出"。三处都是错的: (a) 该换算**没有任何标定出处**, 违反项目 provenance
+> 铁律; (b) 那串示例数字与脚本输出不符 (示例把最小的排在前面, 而代码按 `-avg` 降序),
+> 是编出来的; (c) 其结论句称 "dyno 平均力最大 (124 N)" 与自己列出的示例
+> (climb_grip 443.5 N 更大) 直接矛盾, 还得出 443.5 N 这种远超本项目反复引用的指尖
+> Hertz 极限 60 N 的值。要真做电流→力, 得先有 k_t (N·m/A)、减速比与臂长的实测或标定值,
+> 并标 `provenance=assumed`。
 
 **动脑**: 如果 `slip_detection_threshold=0.7`, 在 dyno 场景里哪些帧会触发滑脱? 用这个判断写第二行查询:
 
