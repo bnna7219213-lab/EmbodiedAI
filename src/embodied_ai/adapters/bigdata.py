@@ -25,6 +25,21 @@ except ImportError:
     yaml = None
 
 
+#: 只有这些 source 才算**实测**遥测注入 (provenance = measured)。
+#: 其余 (如 gen_d4_dataset.py 的 "replay_gen"、data-flywheel 引擎的
+#: "edalab_flywheel"、ingest 默认值 "canfd_frame"/"unknown") 一律归 synthetic。
+#: 单一真源: `export_training_jsonl()` 据此推导 provenance, 不再由导出器断言
+#: 字段"是真实的" —— 此前 real_fields 标签与自家 provenance 四选一铁律冲突。
+#: models/replay_dataset.py 复用本常量, 两处 vocabulary 不得各写一套
+#: (tests/test_d4_pipeline.py 有交叉一致性守护)。
+MEASURED_SOURCES = ("hil", "canfd_live", "bench_inject",
+                    "real", "telemetry", "measured")
+
+#: 遥测物理字段 (参与 provenance 归类; 存在 ≠ 实测)
+TELEMETRY_FIELDS = ("motor_current_a", "temperature_c", "actual_pos_deg",
+                    "actual_current_a", "temp_c")
+
+
 @dataclass
 class TelemetryRecord:
     """规范化遥测记录 (D2 schema)。"""
@@ -185,18 +200,34 @@ class BigdataAdapter:
         path = Path(path) if path else self.output_dir / "training_replay_v1.jsonl"
         path.parent.mkdir(parents=True, exist_ok=True)
         import json as _json
-        real_fields = [f for f in ("motor_current_a", "temperature_c", "actual_pos_deg")
-                       if any(r.get(f) is not None for r in self.records)]
+        sources = sorted({str(r.get("source", "")) for r in self.records})
+        # 字段"存在"不等于字段"实测"。此前这里无条件把 motor_current_a /
+        # temperature_c / actual_pos_deg 标成 real_fields, 而 scripts/
+        # gen_d4_dataset.py 产出的那三个字段全是 rng 剧本 (source="replay_gen"),
+        # 且全仓硬件实物为零 —— 电机电流/温度不可能有实测值。该标签直接违反项目
+        # 铁律"所有新物理参数标注 provenance: measured/assumed/synthetic/待领域
+        # 验证 四选一"。现在 provenance 由记录的 source 推导, 不再由导出器断言。
+        measured = bool(sources) and all(s in MEASURED_SOURCES for s in sources)
+        present = [f for f in TELEMETRY_FIELDS
+                   if any(r.get(f) is not None for r in self.records)]
         header = {
             "_schema": "d4_replay_v1",
             "_provenance": {
                 "source_records": len(self.records),
-                "real_fields": real_fields,
-                "synthetic_fields": ["rgb", "lang"],
+                "record_sources": sources,
+                "telemetry_fields": present,
+                "telemetry_provenance": "measured" if measured else "synthetic",
+                "synthetic_fields": (["rgb", "lang"] if measured
+                                     else sorted(set(present) | {"rgb", "lang"})),
+                "generation": ("hardware/board ingest" if measured else
+                               "rng-script (scripts/gen_d4_dataset.py) — 无物理引擎、"
+                               "无硬件在环; 场景形状由手写规则 + 均匀/高斯扰动构成"),
                 "joints": sorted({r.get("joint_name", "unknown") for r in self.records}),
                 "policy_binding": {
                     "hw_rev": "SF-MDB-0001",
                     "batch_sn": sorted({r.get("board_serial", "unknown") for r in self.records}),
+                    # 板卡序列号是生成器写死的占位符, 不代表真实批次
+                    "binding_provenance": "declared" if measured else "synthetic",
                 },
             },
         }

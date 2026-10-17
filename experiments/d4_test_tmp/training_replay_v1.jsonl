@@ -1,11 +1,2 @@
-{"_schema": "d4_replay_v1", "_provenance": {"source_records": 10, "real_fields": ["motor_current_a", "temperature_c", "actual_pos_deg"], "synthetic_fields": ["rgb", "lang"], "joints": ["j1"], "policy_binding": {"hw_rev": "SF-MDB-0001", "batch_sn": ["SN-T1"]}}}
-{"timestamp_s": 0.0, "joint_name": "j1", "motor_current_a": 10.0, "temperature_c": 40.0, "actual_pos_deg": 0.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
-{"timestamp_s": 0.05, "joint_name": "j1", "motor_current_a": 11.0, "temperature_c": 40.0, "actual_pos_deg": 1.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
-{"timestamp_s": 0.1, "joint_name": "j1", "motor_current_a": 12.0, "temperature_c": 40.0, "actual_pos_deg": 2.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
-{"timestamp_s": 0.15000000000000002, "joint_name": "j1", "motor_current_a": 13.0, "temperature_c": 40.0, "actual_pos_deg": 3.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
-{"timestamp_s": 0.2, "joint_name": "j1", "motor_current_a": 14.0, "temperature_c": 40.0, "actual_pos_deg": 4.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
-{"timestamp_s": 0.25, "joint_name": "j1", "motor_current_a": 15.0, "temperature_c": 40.0, "actual_pos_deg": 5.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
-{"timestamp_s": 0.30000000000000004, "joint_name": "j1", "motor_current_a": 16.0, "temperature_c": 40.0, "actual_pos_deg": 6.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
-{"timestamp_s": 0.35000000000000003, "joint_name": "j1", "motor_current_a": 17.0, "temperature_c": 40.0, "actual_pos_deg": 7.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
-{"timestamp_s": 0.4, "joint_name": "j1", "motor_current_a": 18.0, "temperature_c": 40.0, "actual_pos_deg": 8.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
-{"timestamp_s": 0.45, "joint_name": "j1", "motor_current_a": 19.0, "temperature_c": 40.0, "actual_pos_deg": 9.0, "fault_events": [], "source": "canfd_frame", "board_serial": "SN-T1"}
+{"_schema": "d4_replay_v1", "_provenance": {"source_records": 1, "record_sources": ["hil"], "telemetry_fields": ["motor_current_a", "temperature_c", "actual_pos_deg"], "telemetry_provenance": "measured", "synthetic_fields": ["rgb", "lang"], "generation": "hardware/board ingest", "joints": ["j1"], "policy_binding": {"hw_rev": "SF-MDB-0001", "batch_sn": ["SN-T2"], "binding_provenance": "declared"}}}
+{"timestamp_s": 0.0, "joint_name": "j1", "motor_current_a": 11.0, "temperature_c": 41.0, "actual_pos_deg": 3.0, "fault_events": [], "source": "hil", "board_serial": "SN-T2"}

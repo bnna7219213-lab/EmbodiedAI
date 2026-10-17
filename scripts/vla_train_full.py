@@ -103,7 +103,10 @@ def main() -> int:
         train_batch, val_batch, prov = make_replay_batcher(args.dataset, cfg)
         print(f"=== vla 训练 ({args.size}, {n_params/1e6:.2f}M params, torch {torch.__version__}) ===")
         print(f"[dataset] {args.dataset}")
-        print(f"[dataset] 真实字段: {prov.get('real_fields', '?')} | 合成占位: {prov.get('synthetic_fields', '?')}")
+        print(f"[dataset] 遥测字段: {prov.get('telemetry_fields', '?')} "
+              f"(provenance={prov.get('telemetry_provenance', '?')}) | "
+              f"合成占位: {prov.get('synthetic_fields', '?')}")
+        print(f"[dataset] 生成方式: {prov.get('generation', '?')}")
         print(f"[dataset] 关节覆盖: {prov.get('joints', '?')} | 批次绑定: {prov.get('policy_binding', {}).get('batch_sn', '?')}")
     else:
         print(f"=== vla 训练 ({args.size}, {n_params/1e6:.2f}M params, torch {torch.__version__}) ===")

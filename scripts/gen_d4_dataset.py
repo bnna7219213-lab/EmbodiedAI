@@ -1,17 +1,27 @@
-"""生成 D4 训练数据集 — 从合成遥测源 (演示端到端; 真机遥测替换 ingest 即同管线)。
+"""生成 D4 训练数据集 — 合成遥测 (演示端到端管线; **不含物理, 不含硬件**)
+
+**provenance = synthetic (诚实边界)**
+    所有"物理量"(电流/温度/位置)都由 `rng = default_rng(42)` 的均匀/高斯扰动 +
+    手写场景规则产生, 记录 source 标为 "replay_gen"。本脚本**不 import 任何仿真
+    环境**, 因此不存在动力学一致性 —— 位置与电流之间没有 τ=I·R+L·dI/dt 之类的
+    耦合, 温度也不由电流焦耳热积分而来。
+    plan.md S2.3 / plan_v2.md 曾把 D4 扩充描述为"climb_scene 大规模 rollout,
+    provenance 全量真实" —— 那个管线**没有实现**; 真机/HIL 遥测只要把 ingest 的
+    source 换成 MEASURED_SOURCES 中的取值, 导出头就会自动归类为 measured, 无需
+    改本脚本。
 
 数据扩充 (任务 ③): 120 → >=1000 episodes。
   每条 episode 是一个关节的完整运动轨迹 (20-60 步), 含 episode_id 与 scenario 标签。
   全部 episodes: 1050 条 (150/scenario x 7 类), 总记录数 ~30k+。
 
-  场景覆盖 climbing / household 两大领域:
+  场景覆盖 climbing / household 两大领域 (形状=手写规则, 非物理求解):
     climb_grip        静态握持     (高电流维持 · 位置稳定)
     climb_reach       伸臂够点     (位置斜坡 · 中等电流)
     climb_dyno        动态跳脱     (阶跃冲击 · 大电流尖峰)
     climb_cross       交叉横移     (正弦轨迹 · 电流跟随)
     tendon_pump       VSA 蓄能     (电流振荡 · 温升累积)
     household_grasp   轻抓取       (缓斜坡 · 低电流)
-    slip_recovery     滑脱恢复     (位置漂移 + 电流尖峰 · 真实失败模式)
+    slip_recovery     滑脱恢复     (位置漂移 + 电流尖峰 · 模拟失败模式)
 """
 
 import sys

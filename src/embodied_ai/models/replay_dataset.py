@@ -20,6 +20,11 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
 
+# 实测 source 词汇表单一真源在数据接入层 —— 此前本模块与 bigdata 的导出器各写
+# 一套 ("real"/"telemetry"/"measured" vs 无条件 real_fields), 于是同一份数据在
+# 两处得到相反的 provenance 结论。
+from ..adapters.bigdata import MEASURED_SOURCES
+
 try:
     import torch
     from torch.utils.data import DataLoader, Dataset
@@ -90,13 +95,13 @@ def build_pairs(records: List[Dict[str, Any]], horizon: int = 1,
     split_idx = len(pairs) - n_val
     train, val = pairs[:split_idx], pairs[split_idx:]
 
-    # P0 修复: real_fields 应按 source="real" 判定, 而非"字段非 None"。
+    # P0 修复: real_fields 应按 source 判定, 而非"字段非 None"。
     # 原代码把 source="unknown" 或 source="synthetic" 的记录也计入 real_fields,
-    # 让训练误以为有真实遥测。修复: 只统计 source="real" (或缺失时保守为 False)。
+    # 让训练误以为有真实遥测。修复: 只统计 MEASURED_SOURCES 内的 source。
     real_field_set = set()
     for r in records:
         src = str(r.get("source", "")).lower()
-        if src in ("real", "telemetry", "measured"):
+        if src in MEASURED_SOURCES:
             for f in FEATURE_FIELDS:
                 if r.get(f) is not None:
                     real_field_set.add(f)
@@ -107,6 +112,7 @@ def build_pairs(records: List[Dict[str, Any]], horizon: int = 1,
         provenance={
             "feature_fields": FEATURE_FIELDS,
             "real_fields": real_fields,
+            "telemetry_provenance": "measured" if real_fields else "synthetic",
             "synthetic_only_fields": synthetic_only_fields,
             "synthetic_fields": ["rgb", "lang"],
             "note": ("rgb/lang 为确定性零张量占位 (遥测中不存在), provenance=synthetic_zero; "
