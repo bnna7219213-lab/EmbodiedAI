@@ -1,0 +1,39 @@
+# OS SSH 通道契约 (plan_v6 Sprint N: N3) — 机器可读, 供 os_channel/ssh_admin 消费。
+# 双通道语义:
+#   RUNTIME     = 实时协作规划通道 (人机互相配合完成下一步动作, 非遥控命令)
+#   MAINTENANCE = SSH 维护通道 (机器人停机, 修历史 bug / 装新程序 / 拉日志)
+metadata:
+  name: os_channel
+  version: v1
+  provenance: assumed        # 主机/板卡名为示例值, 真机部署待实测标定
+
+robot:
+  host: embodied-robot.local     # 真机部署时改 (待实测)
+  user: robot
+  # 板卡画像引用 contracts/hw_requirements.yaml 的 target_board (单一真源)
+  board_ref: hw_requirements.target_board
+
+channels:
+  runtime:
+    kind: runtime
+    description: 实时 runtime 协作规划 (20Hz 控制环内, 互相完成下一步规划动作)
+    allows_motion: true
+  maintenance:
+    kind: maintenance
+    description: SSH 维护通道 (停机修 bug/新增功能程序/出厂烧录), 不用于遥控
+    allows_motion: false
+
+mode_policy:
+  # 维护态停机流转 (与 ssh_admin.ALLOWED_TRANSITIONS 一致)
+  transitions:
+    runtime: [paused]
+    paused: [maintenance, runtime]
+    maintenance: [provisioned, paused]
+    provisioned: [runtime]
+  motion_allowed_states: [runtime]    # 仅 RUNTIME 允许运动指令 (硬门禁)
+
+ssh:
+  user: robot
+  opts: ["-o", "BatchMode=yes"]
+  factory_program_path: /tmp/factory_provision.sh
+  cognition_root: /opt/embodied/cognition
