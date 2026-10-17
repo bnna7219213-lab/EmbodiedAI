@@ -41,7 +41,9 @@ class MultiRateEKF:
         I_KH = np.eye(3) - K @ H
         self.P = I_KH @ self.P @ I_KH.T + K @ R @ K.T
         # slip 边界观测: 若 z_f 贴近 μ f_n，则 μ 也可观
-        if abs(z_f - self.x[1] * self.f_n) < 1.0:
+        # ④ 修正 (2026-10-08): 原阈值 1.0N 对 40N 系统太窄 (先验偏差 ~8N → 永不触发)
+        # 改为比例化: 0.15 * f_n (40N→6N), 兼容不同力级系统
+        if abs(z_f - self.x[1] * self.f_n) < 0.15 * self.f_n:
             H2 = np.array([[0.0, self.f_n, 0.0]])
             S2 = H2 @ self.P @ H2.T + np.array([[self.R_tac * 4]])
             K2 = self.P @ H2.T @ np.linalg.inv(S2)
