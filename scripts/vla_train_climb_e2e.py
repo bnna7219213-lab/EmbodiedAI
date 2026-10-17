@@ -118,8 +118,23 @@ def audit(episodes: List[dict]) -> dict:
     lang_rows = {tuple(lang_tokens(s).tolist()) for s in instrs}
 
     phys_summary = {k: len(v) for k, v in phys_unique.items()}
+
+    # DR 参数是否真的落进了数据集 (v2 数据集应带 episode_meta.dr_params)
+    dr_unique: Dict[str, int] = {}
+    n_with_dr = 0
+    for ep in episodes:
+        d = ep.get("episode_meta", {}).get("dr_params")
+        if isinstance(d, dict) and d:
+            n_with_dr += 1
+            for k, v in d.items():
+                if isinstance(v, (int, float)) and not isinstance(v, bool):
+                    dr_unique.setdefault(k, set()).add(round(float(v), 5))
+    dr_reported = {k: len(v) for k, v in sorted(dr_unique.items())}
+
     return {
         "n_episodes": len(episodes),
+        "schema_has_dr_params": n_with_dr,
+        "dr_parameter_unique_value_counts": dr_reported,
         "n_steps_total": int(sum(step_counts)),
         "steps_min": int(min(step_counts)), "steps_max": int(max(step_counts)),
         "episodes_with_obs_act_mismatch": n_bad_len,
@@ -163,25 +178,40 @@ def mu_from_physics(ep: dict) -> float:
     return float(np.clip(fp / fs, 0.30, 0.95))
 
 
+#: 触觉窗口的步数。攀岩者做一次抓握逼近约 5 s @20Hz = 100 步。
+TACTILE_WINDOW_STEPS = 100
+
+
 def tactile_features(ep: dict, n_steps: int) -> np.ndarray:
-    """跑 TactileGripLoop, 返回 [n_steps, 3] = (μ̂, σ_μ, f_n_setpoint/40)。
+    """跑 TactileGripLoop, 返回 [n_steps, 3] = (mu_hat, sigma_mu, f_n_setpoint/40)。
 
     f_t 序列来自 synth_tactile_obs (确定性 stick→slip 物理模型, provenance=synthetic),
     EKF 与机会约束握力是**生产实现** (multirate_ekf / chance_constrained_grip)。
+
+    **为什么窗口要长于 episode 自身 (18 步)**: synth_tactile_obs 以 8 N/s × 0.05 s
+    = 0.4 N/步 加载切向力, 达到 μ·f_n ≈ 30 N 的滑脱边界需要约 75 步。若只跑
+    episode 的 18 步, 加载停留在 stick 段**从未越过锥面** → EKF 收不到任何
+    能约束 μ 的观测 → mu_hat 几乎不动 (实测全域仅跨 [0.552, 0.572]), 触觉通道
+    对预测自然没有贡献。这不是 DR 失效, 而是**观测窗口短于被辨识过程的时长**。
+    因此按 100 步跑完整 stick→slip, 再线性映射回 episode 的 T 步 (时间 warp)。
     """
     from embodied_ai.control.tactile_grip_loop import TactileGripLoop, synth_tactile_obs
 
     mu_true = mu_from_physics(ep)
-    obs_stream = synth_tactile_obs(mu_true=mu_true, f_n=40.0,
-                                   n_steps=n_steps, seed=int(ep["episode_meta"]["seed"]))
+    stream = synth_tactile_obs(mu_true=mu_true, f_n=40.0,
+                               n_steps=TACTILE_WINDOW_STEPS,
+                               seed=int(ep["episode_meta"]["seed"]))
     ctrl = _PassthroughController()
     loop = TactileGripLoop(ctrl, bus=None, f_n_nominal=40.0)
-    feats = np.zeros((n_steps, 3), dtype=np.float64)
-    for i, o in enumerate(obs_stream):
+    feats = np.zeros((TACTILE_WINDOW_STEPS, 3), dtype=np.float64)
+    for i, o in enumerate(stream):
         ctrl.step(o)
         feats[i] = (loop.last_mu_hat, loop.last_sigma_mu,
                     loop.last_f_n_setpoint / 40.0)
-    return feats
+    # 时间 warp: episode 第 t 步 ↔ 窗口第 floor((t+1)/T · W) − 1 步
+    idx = np.clip((np.arange(1, n_steps + 1) / n_steps * TACTILE_WINDOW_STEPS)
+                  .astype(int) - 1, 0, TACTILE_WINDOW_STEPS - 1)
+    return feats[idx]
 
 
 # ------------------------------------------------------------------ #
@@ -215,9 +245,8 @@ def lang_tokens(text: str, n: int = 8, vocab: int = 256) -> np.ndarray:
 PHASES = ("hang", "reach", "swing", "dyno", "capture", "climb_on")
 
 
-def build_samples(episodes: List[dict], horizon: int, tactile_every: int = 3) -> dict:
-    """按 episode 构造样本; 触觉量按 tactile_every 步重跑一次 (EKF 收敛是慢过程,
-    逐步重跑代价高且短 episode 内 μ̂ 变化有限)。"""
+def build_samples(episodes: List[dict], horizon: int) -> dict:
+    """按 episode 构造样本 (触觉量见 tactile_features 的时间 warp 说明)。"""
     X, Y, L, EPID = [], [], [], []
     skipped_short = 0
     for ei, ep in enumerate(episodes):
@@ -230,7 +259,7 @@ def build_samples(episodes: List[dict], horizon: int, tactile_every: int = 3) ->
         joints = np.stack([_vec(o["joint_positions"]) for o in obs])      # [T,12]
         ee = np.stack([_vec(o["ee_position"]) for o in obs])               # [T,3]
         ph = np.stack([_phase_onehot(o.get("phase", "")) for o in obs])    # [T,6]
-        tac = np.tile(_episode_tac(ep, T, tactile_every), (1, 1))           # [T,3]
+        tac = _episode_tac(ep, T)                                 # [T,3]
 
         lang = lang_tokens(str(ep.get("instruction", "")))
         for t in range(T - horizon):
@@ -257,12 +286,12 @@ def _phase_onehot(p) -> np.ndarray:
 _TAC_CACHE: Dict[int, np.ndarray] = {}
 
 
-def _episode_tac(ep: dict, T: int, every: int) -> np.ndarray:
+def _episode_tac(ep: dict, T: int) -> np.ndarray:
+    """按 (seed, T) 缓存触觉特征 —— 二者确定后特征即确定。"""
     key = int(ep["episode_meta"]["seed"]) * 1000 + T
     if key not in _TAC_CACHE:
-        _TAC_CACHE[key] = tactile_features(ep, max(T, 8))
-    full = _TAC_CACHE[key]
-    return full[:T] if full.shape[0] >= T else np.pad(full, ((0, T - full.shape[0]), (0, 0)))
+        _TAC_CACHE[key] = tactile_features(ep, T)
+    return _TAC_CACHE[key]
 
 
 # ------------------------------------------------------------------ #
@@ -290,16 +319,25 @@ def episode_split(S: dict, val_ratio: float = 0.2, seed: int = 0):
 
 
 def leakage_probe(S: dict) -> dict:
-    """量化"若按全局时序 80/20 切"会泄漏多少: val 首样本在 train 中的最近邻距离。"""
+    """量化"若按全局时序 80/20 切"会泄漏多少。
+
+    判据必须是**相对**量: 邻帧距离只有对着状态自身的尺度才有意义
+    (0.05 这个数在逐维微扰引入后不再"≈0", 但相对尺度依然小得离谱)。
+    """
     X, epid = S["X"], S["epid"]
     cut = int(len(X) * 0.8)
     tr, va = X[:cut], X[cut:]
     if len(tr) == 0 or len(va) == 0:
         return {}
     d = np.linalg.norm(va[:200][:, None, :] - tr[None, :, :], axis=2).min(axis=1)
-    same_ep = int(np.sum(epid[cut:cut + 200] == epid[:cut][-1]))
-    return {"naive_global_split_median_nn_distance": float(np.median(d)),
-            "naive_split_val_samples_with_epid_equal_last_train": same_ep}
+    # 状态尺度: 全体样本逐维 std 的均值 × sqrt(dim) (各向同性时的典型距离量级)
+    scale = float(X.std(axis=0).mean() * np.sqrt(X.shape[1]))
+    median_nn = float(np.median(d))
+    return {"naive_global_split_median_nn_distance": median_nn,
+            "state_typical_distance_scale": scale,
+            "naive_split_nn_over_state_scale": median_nn / max(scale, 1e-12),
+            "naive_split_val_samples_with_epid_equal_last_train":
+                int(np.sum(epid[cut:cut + 200] == epid[:cut][-1]))}
 
 
 def constant_baseline_mse(Ytr: np.ndarray, Yva: np.ndarray) -> float:
@@ -370,11 +408,13 @@ def main() -> int:
     if args.max_episodes:
         episodes = episodes[:args.max_episodes]
     rep = {"provenance": {
-        "state_joint_ee_phase": "real_computed (climb_scene 闭环)",
-        "state_tactile": "synthetic (synth_tactile_obs) + assumed μ 映射 (未标定)",
-        "language": "real_text (instruction 模板)",
-        "action": "real_computed (相位模板+微扰)",
+        # simulated = 由物理引擎计算链产出, **非实测** (全仓硬件实物为零)
+        "state_joint_ee_phase": "simulated (climb_scene 闭环计算, 非实测)",
+        "state_tactile": "synthetic (synth_tactile_obs stick-slip) + assumed μ 映射",
+        "language": "template_text (instruction 由 seed 填充, 非语言模型)",
+        "action": "simulated (相位模板 + 逐维 seed 微扰)",
         "vision": "absent (frames=None; 数据集中不存在图像)",
+        "dr_parameters": "assumed (ClimbDR.from_seed 区间为本仓设定, 非实测散布)",
     }}
     rep["audit"] = audit(episodes)
     a = rep["audit"]
@@ -391,6 +431,8 @@ def main() -> int:
           f"  | 不同 std 取值数: {a['action_distinct_std_values']} / 12")
     print(f"  物理字段唯一值数: {a['physics_field_unique_value_counts']}")
     print(f"  **退化为单一值的物理字段**: {a['physics_degenerate_fields']}")
+    print(f"  带 dr_params 的 episode: {a['schema_has_dr_params']} / {a['n_episodes']}"
+          f"  | DR 参数唯一值数: {a['dr_parameter_unique_value_counts']}")
     if a["lang_channel_degenerate"]:
         raise AssertionError(
             "语言通道退化为常量 —— 消融探针会失去意义 (val 对 lang 的 Δ 恒为 0), "
@@ -414,9 +456,11 @@ def main() -> int:
     rep["split"] = split_info
     rep["leakage_probe"] = leakage_probe(S)
     print(f"  train_eps={split_info['n_train_episodes']} val_eps={split_info['n_val_episodes']}")
-    print(f"  全局时序切分的 val→train 最近邻中位距离: "
-          f"{rep['leakage_probe'].get('naive_global_split_median_nn_distance', float('nan')):.5f}"
-          f"  (≈0 ⇒ 邻帧泄漏, val loss 无意义)")
+    lp = rep["leakage_probe"]
+    print(f"  全局时序切分: val→train 最近邻中位距离 {lp['naive_global_split_median_nn_distance']:.5f}"
+          f" / 状态典型尺度 {lp['state_typical_distance_scale']:.4f}"
+          f" = {100*lp['naive_split_nn_over_state_scale']:.1f}% 尺度"
+          f"  (占比极小 ⇒ 邻帧泄漏, val loss 无意义)")
 
     cfg = VLAConfig.ablations()[args.size]
     cfg.device = "cpu"; cfg.use_mixed_precision = False; cfg.seed = args.seed
@@ -480,6 +524,16 @@ def main() -> int:
     print(f"  val MSE (触觉置零)      = {m_tac_zero:.8f}   Δ={m_tac_zero-m_full:+.3e}")
     print(f"  常数基线                = {base_mse:.8f}")
     print(f"  相对常数基线的方差解释率 = {100*r2:.1f}%")
+
+    # 通道贡献的**最小效应量**门槛。没有它, "打乱后 val 变差" 会在 Δ=1e-6
+    # (相对 0.005%) 上判 ✅ —— 那与噪声不可区分, 正是本仓 v1.1 一路在清除的
+    # "绿色但无效"判据。方向对不等于通道真在被使用。
+    MIN_CHANNEL_REL_EFFECT = 0.02      # 消融使 val MSE 恶化 ≥ 2% 才算真在使用
+    rel_lang = (m_lang_shuf - m_full) / m_full
+    rel_tac = (m_tac_zero - m_full) / m_full
+    print(f"  语言通道相对效应 = {100*rel_lang:.3f}%  "
+          f"触觉通道相对效应 = {100*rel_tac:.3f}%  "
+          f"(判绿门槛 {100*MIN_CHANNEL_REL_EFFECT:.0f}%)")
     # persistence 对照: 把当前关节角直接抄成未来 H 步动作。若它优于常数基线,
     # 说明模型分数主要来自"动作≈状态"的自相关而非学习。
     H = cfg.action_horizon
@@ -493,6 +547,9 @@ def main() -> int:
                    "val_mse_persistence_baseline": mse_pers,
                    "variance_explained_vs_constant": r2,
                    "variance_explained_by_persistence": 1 - mse_pers / base_mse,
+                   "min_channel_rel_effect": MIN_CHANNEL_REL_EFFECT,
+                   "lang_channel_rel_effect": rel_lang,
+                   "tactile_channel_rel_effect": rel_tac,
                    "per_dim": per_dim,
                    "n_informative_action_dims": len(informative),
                    "n_val_evaluated": n_eval}
@@ -506,8 +563,10 @@ def main() -> int:
     ok_beats = m_full < base_mse
     verdict.append((f"模型优于常数基线 ({'是' if ok_beats else '否'})", ok_beats))
     verdict.append(("模型优于 persistence 基线 (不只是抄当前关节角)", m_full < mse_pers))
-    verdict.append(("语言通道携带可用信息 (打乱后 val 变差)", m_lang_shuf > m_full))
-    verdict.append(("触觉通道携带可用信息 (置零后 val 变差)", m_tac_zero > m_full))
+    verdict.append(("语言通道被真正使用 (打乱后 val 恶化 ≥ 2%)",
+                    rel_lang >= MIN_CHANNEL_REL_EFFECT))
+    verdict.append(("触觉通道被真正使用 (置零后 val 恶化 ≥ 2%)",
+                    rel_tac >= MIN_CHANNEL_REL_EFFECT))
     # 注意: 不能用"var > 1e-4 的维数"来判退化 —— 实测 7 个维的 var=0.001048 只是
     # 勉强越过阈值, 它们其实是**同一个模板常数加了同一份噪声** (std 完全相等),
     # 那条判据会给出假绿灯。改用"不同 std 取值数"直接量结构冗余。
