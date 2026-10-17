@@ -4,6 +4,51 @@
 
 ---
 
+## v1.4 (2026-10-17) — 打通 seed → 物理层域随机化 + 攀岩数据集重生 + VLA×触觉端到端实跑
+
+> 起因: v1.3 用 1000 episodes 实跑 VLA 训练时测出——**11 个物理字段的唯一值数全为 1**
+> (f_soft_peak_n≡59.99999 / soft_ratio≡0.51949 / peak_finger_n≡32.6986 …)。所谓
+> "seed 驱动的域随机化"根本没进物理层, 于是触觉/语言通道在训练里测不出任何贡献。
+> 详见 [docs/vla-climb-e2e-训练与数据质量.md](docs/vla-climb-e2e-训练与数据质量.md)。
+
+| ID | 交付 | 验收 |
+|---|---|---|
+| **R1** | `climb_scene.ClimbDR` 域随机化参数组: 指尖柔度(结构/剪切/弯曲)+阻尼、Hertz 耦合刚度 k_hc、预压 f_preload、末端等效质量 m_eff、VSA 蓄能量缩放、弹道 p_star/r_max/margin、target_hold 索引、hold μ **与载荷极限**、斜壁体重/重心高/手摩擦/侧向载荷、步态步长/重心高 | `ClimbDR()` 逐字段 = 引入 DR 前的硬编码字面量 → `dr=None` 行为完全不变 (既有 79 项攀岩/接触测试全绿); `--spread 0` 对照可复现 |
+| **R2** | `run_climb_cycle(seed, dr=…)` 打通传导; 结果新增 `dr_params` 随每条 episode 落盘 | 1000 eps 的 f_soft / f_rigid / soft_ratio / v_capture_max **1000/1000 唯一值**, peak_finger 999/1000, com_advance 995/1000 |
+| **R3** | `gen_climb_rollouts.py` v2 重生: 逐维 seed 微扰、坐标存**真 JSON 数组**、provenance 改 `simulated`+`assumed`、失稳配置显式跳过并计数 | 12/12 动作维 std 各不相同 (原 6 种); 跳过率 9.7% 如实打印; schema `d4_climb_v2` |
+| **R4** | `test_climb_dataset.py` 重写: 补回测试名承诺却从未实现的**多样性判据** (唯一值数 + 相对极差双阈), 加"provenance 不得出现 real/measured"反证、恒定字段必须在 `known_constant_fields` 说明原因 | 15 项; 若 DR 再次塌回常量必然失败 |
+| **R5** | `vla_train_climb_e2e.py` 触觉观测窗修正 + 消融**最小效应量门槛** (2%) | 触觉相对效应 0.298% → **2.163%** 跨过门槛; 语言 0.008% 如实保持 ❌ |
+
+### 两处方法学修复（比功能更值得记）
+
+1. **恒真判据**: 通道消融原本只判 `Δ > 0`。DR 修好后语言通道 Δ=+1.4e-06 (相对
+   0.008%) 也会被判 ✅ —— 与噪声不可区分。现要求恶化 ≥ 2% 才算该通道真在被使用。
+2. **观测窗短于被辨识过程**: 触觉 mu_hat 全域只跨 [0.552, 0.572] 曾看似"触觉信息量
+   天然不足"。真因是 `synth_tactile_obs` 以 0.4 N/步加载、越过 μ·f_n≈30 N 的滑脱边界
+   需约 75 步, 而 episode 只有 18 步 → EKF **从未收到能约束 μ 的观测**。改为 100 步
+   完整 stick→slip 窗口再时间 warp 回 episode, 效应立刻从 0.3% 升到 2.2%。
+   教训: 通道"没信息"的结论, 先排除是不是自己把观测窗口切短了。
+
+### 仍未成立的部分（不掩饰）
+
+- **语言通道仍测不出贡献 (0.008%)**。根因不在 DR, 而在 instruction 只在第 17 位的
+  seed 数字上不同 —— 想让语言真正参与, 需要**随指令改变行为的数据策略**, 而当前
+  动作由相位模板生成, 与文本无关。摘要派生的 lang token 实质是 seed 指纹, 因此这条
+  ❌ 同时说明: 本数据集**不能**用来宣称 VLA 的语言能力。
+- `capture_feasible` 恒 True 是**构造性**的 (捕获二分解到 f_soft == hold.max_load_n,
+  可行性由算法保证), 已在 `known_constant_fields` 记明原因, 不可当物理结论。
+- `wall_frames` 恒 7、`full_speed_infeasible` 恒 True、`dyno_tf_s` 仅 10 个取值
+  (弹道积分按 dt 量化) —— 均为已知恒定项, 已入档。
+- DR 区间是 **assumed**, 无一条来自实测散布; 真机参数标定仍是 Phase P 的欠账。
+- 全维联合放开时 9.7% 的 seed 落在斜壁不可行域 (体重×手摩擦×侧向载荷×重心高的联合
+  交互; 任一单维放开都是 0 失败)。当前处理是显式跳过并计数, 未把它变成可学习的样本。
+
+验证: verify **45/45 PASS** (项数不变); pytest **804 passed / 1 skipped**; 训练 val 对常数基线
+解释率 25.5% (v1 数据上是 42.4% —— **下降是好事**: 旧数据近半是"几乎恒定的维"白送的
+分数, DR 后任务变难, 度量才可信)。
+
+---
+
 ## v1.3 (2026-10-17) — 架构设计文档 + e-nose 标定 + V2L 几何验证 + 真机 E2E 闭环规划
 
 > 文档: [docs/19-vla-ssh-architecture-and-verification.md](docs/19-vla-ssh-architecture-and-verification.md)

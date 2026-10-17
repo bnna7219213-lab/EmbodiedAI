@@ -4,10 +4,18 @@
 >
 > **定位**: 不拼装现有方案，从零构建"AI 神经网络模型 → PCB 硬件 → 电机驱动 → 具身智能体"全链条的端到端研发计划。
 >
-> **版本**: v1.3 | 更新日期: 2026-10-17
+> **版本**: v1.4 | 更新日期: 2026-10-17
 >
 > **一键验收**: `scripts\verify.bat` (cmd) / `.\scripts\verify.ps1` (PowerShell) → `RESULT=VERIFY_OK`
-> 或 `python -m embodied_ai.cli verify` (**45 项**聚合自检, 退出码即结论; 含 pytest = 46 项, v1.3 实测)
+> 或 `python -m embodied_ai.cli verify` (**45 项**聚合自检, 退出码即结论; 含 pytest = 46 项, v1.4 实测)
+>
+> **v1.4 主题**: **打通 seed → 物理层的域随机化** —— `climb_scene.ClimbDR` 让指尖柔度/
+> 阻尼、Hertz 耦合刚度、预压/等效质量、VSA 蓄能、弹道几何、hold μ 与载荷极限、
+> 斜壁体重/重心、步态参数全部随 seed 变化 (此前 11 个物理字段在 1000 episodes 里
+> **全是同一个值**); 攀岩数据集 v2 重生 (逐维动作微扰、坐标存真数组、provenance 改
+> simulated/assumed); VLA×触觉端到端实跑并引入**消融最小效应量门槛**。详见
+> [CHANGELOG v1.4](CHANGELOG.md) 与
+> [docs/vla-climb-e2e-训练与数据质量.md](docs/vla-climb-e2e-训练与数据质量.md)。
 >
 > **v1.3 主题**: [架构设计文档 docs/19](docs/19-vla-ssh-architecture-and-verification.md)
 > —— VLA 双路径 / SSH 双通道 / 信号分频·触觉融合·空间智能决策链路的架构说明;

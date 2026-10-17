@@ -32,6 +32,8 @@ v1.0 新增: 见 CHANGELOG v1.0 — Sprint M 感知/认知栈 (分频融合 / SL
            认知中枢) + runtime 消息总线与 MissionManager
 v1.1 新增: 见 CHANGELOG v1.1 — 验收诚实化 (判据去自我认证 / 静默失败改显式
            报错 / provenance 整改 / 单仓自足去个人路径)
+v1.4 新增: 见 CHANGELOG v1.4 — seed→物理层域随机化 (ClimbDR) + 攀岩数据集 v2
+           重生 + VLA×触觉端到端实跑与消融效应量门槛
 """
 
 from . import console  # noqa: F401 — 导入即提供安全输出能力
@@ -39,4 +41,4 @@ from . import console  # noqa: F401 — 导入即提供安全输出能力
 #: 版本号**单一真源** — pyproject.toml 经 [tool.setuptools.dynamic] 静态提取
 #: 此值, verification.VERSION 也从这里取。不要再在别处写死版本字面量
 #: (tests/test_version_consistency.py 守护四方一致)。
-__version__ = "1.3.0"
+__version__ = "1.4.0"
